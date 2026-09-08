@@ -1,0 +1,13 @@
+[
+  {"name":"HuntCreated","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"creator","type":"address","indexed":true},{"name":"huntType","type":"uint8","indexed":false},{"name":"prize","type":"uint256","indexed":false},{"name":"endTime","type":"uint256","indexed":false}]},
+  {"name":"HuntParticipated","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"player","type":"address","indexed":true}]},
+  {"name":"CorrectSolution","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"player","type":"address","indexed":true},{"name":"position","type":"uint256","indexed":false}]},
+  {"name":"IncorrectSolution","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"player","type":"address","indexed":true}]},
+  {"name":"HuntSolved","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"winner","type":"address","indexed":true},{"name":"prize","type":"uint256","indexed":false}]},
+  {"name":"RandomnessRequested","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"requestId","type":"uint256","indexed":true}]},
+  {"name":"WinnerSelected","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"winner","type":"address","indexed":true},{"name":"randomWord","type":"uint256","indexed":false}]},
+  {"name":"PrizeClaimed","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"winner","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}]},
+  {"name":"NFTMinted","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true},{"name":"winner","type":"address","indexed":true},{"name":"tokenId","type":"uint256","indexed":false}]},
+  {"name":"HuntClosed","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true}]},
+  {"name":"HuntCancelled","type":"event","inputs":[{"name":"huntId","type":"uint256","indexed":true}]}
+]

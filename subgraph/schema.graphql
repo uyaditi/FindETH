@@ -1,0 +1,107 @@
+"""
+Internet Treasure Hunts — Subgraph Schema
+Indexes TreasureHunt.sol events for fast discovery, leaderboards, and analytics.
+"""
+
+# ── Enums ─────────────────────────────────────────────────────────────────────
+
+enum HuntType {
+  Race
+  MysteryDraw
+}
+
+enum HuntStatus {
+  Active
+  Closed
+  Solved
+  Cancelled
+}
+
+# ── Core entities ─────────────────────────────────────────────────────────────
+
+type Hunt @entity {
+  id:               ID!                  # on-chain huntId as string
+  creator:          Bytes!               # address
+  answerHash:       Bytes!               # bytes32
+  prize:            BigInt!              # wei
+  participantCount: BigInt!
+  correctCount:     BigInt!
+  createdAt:        BigInt!              # unix timestamp
+  endTime:          BigInt!              # 0 = no deadline
+  huntType:         HuntType!
+  status:           HuntStatus!
+  winner:           Bytes                # address, null until solved
+  vrfRequestId:     BigInt               # set when VRF requested
+  prizeClaimed:     Boolean!
+
+  # Relations
+  solutions:           [Solution!]!          @derivedFrom(field: "hunt")
+  randomnessRequests:  [RandomnessRequest!]! @derivedFrom(field: "hunt")
+  nft:                 NFT                   @derivedFrom(field: "hunt")
+}
+
+type Player @entity {
+  id:           ID!      # address as lowercase hex
+  wins:         BigInt!
+  huntsSolved:  BigInt!
+  totalEarned:  BigInt!  # wei
+  nftsOwned:    BigInt!
+
+  # Relations
+  solutions:    [Solution!]! @derivedFrom(field: "player")
+  prizes:       [PrizeClaim!]! @derivedFrom(field: "winner")
+  trophies:     [NFT!]!       @derivedFrom(field: "winner")
+}
+
+type Solution @entity {
+  id:        ID!       # txHash-logIndex
+  hunt:      Hunt!
+  player:    Player!
+  correct:   Boolean!
+  timestamp: BigInt!
+  txHash:    Bytes!
+}
+
+type RandomnessRequest @entity {
+  id:          ID!     # requestId as string
+  hunt:        Hunt!
+  requestId:   BigInt!
+  fulfilled:   Boolean!
+  randomWord:  BigInt  # set when fulfilled
+  timestamp:   BigInt!
+}
+
+type Winner @entity {
+  id:      ID!   # huntId as string
+  hunt:    Hunt!
+  player:  Player!
+  prize:   BigInt!
+  timestamp: BigInt!
+}
+
+type PrizeClaim @entity {
+  id:        ID!
+  hunt:      Hunt!
+  winner:    Player!
+  amount:    BigInt!
+  timestamp: BigInt!
+}
+
+type NFT @entity {
+  id:          ID!     # tokenId as string
+  hunt:        Hunt!
+  winner:      Player!
+  mintedAt:    BigInt!
+  tokenId:     BigInt!
+}
+
+# ── Aggregate stats (single entity, id = "global") ────────────────────────────
+
+type GlobalStats @entity {
+  id:                ID!   # "global"
+  totalHunts:        BigInt!
+  totalParticipants: BigInt!
+  totalPrizeEth:     BigInt!
+  totalNFTsMinted:   BigInt!
+  totalWinners:      BigInt!
+}

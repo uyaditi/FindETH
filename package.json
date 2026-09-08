@@ -1,0 +1,16 @@
+{
+  "name": "internet-treasure-hunts",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "subgraph"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend",
+    "test:contracts": "cd contracts && forge test",
+    "deploy:local": "cd contracts && forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast",
+    "deploy:sepolia": "cd contracts && forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --verify"
+  }
+}

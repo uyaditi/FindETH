@@ -1,0 +1,56 @@
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+
+dataSources:
+  - kind: ethereum
+    name: TreasureHunt
+    network: sepolia
+    source:
+      # Replace with your deployed contract address after deployment
+      address: "0x0000000000000000000000000000000000000000"
+      abi: TreasureHunt
+      # Replace with the deployment block number to avoid scanning from genesis
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Hunt
+        - Player
+        - Solution
+        - RandomnessRequest
+        - Winner
+        - PrizeClaim
+        - NFT
+        - GlobalStats
+      abis:
+        - name: TreasureHunt
+          file: ./abis/TreasureHunt.json
+        - name: TreasureNFT
+          file: ./abis/TreasureNFT.json
+      eventHandlers:
+        - event: HuntCreated(indexed uint256,indexed address,uint8,uint256,uint256)
+          handler: handleHuntCreated
+        - event: HuntParticipated(indexed uint256,indexed address)
+          handler: handleHuntParticipated
+        - event: CorrectSolution(indexed uint256,indexed address,uint256)
+          handler: handleCorrectSolution
+        - event: IncorrectSolution(indexed uint256,indexed address)
+          handler: handleIncorrectSolution
+        - event: HuntSolved(indexed uint256,indexed address,uint256)
+          handler: handleHuntSolved
+        - event: RandomnessRequested(indexed uint256,indexed uint256)
+          handler: handleRandomnessRequested
+        - event: WinnerSelected(indexed uint256,indexed address,uint256)
+          handler: handleWinnerSelected
+        - event: PrizeClaimed(indexed uint256,indexed address,uint256)
+          handler: handlePrizeClaimed
+        - event: NFTMinted(indexed uint256,indexed address,uint256)
+          handler: handleNFTMinted
+        - event: HuntClosed(indexed uint256)
+          handler: handleHuntClosed
+        - event: HuntCancelled(indexed uint256)
+          handler: handleHuntCancelled
+      file: ./src/mapping.ts

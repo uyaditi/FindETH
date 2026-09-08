@@ -1,0 +1,15 @@
+{
+  "name": "internet-treasure-hunts-subgraph",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "codegen": "graph codegen",
+    "build":   "graph build",
+    "deploy":  "graph deploy --studio internet-treasure-hunts",
+    "create":  "graph create --node https://api.thegraph.com/deploy/ internet-treasure-hunts"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli":  "0.68.4",
+    "@graphprotocol/graph-ts":   "0.35.1"
+  }
+}
