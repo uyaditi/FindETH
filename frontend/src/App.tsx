@@ -1,27 +1,50 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 
 import Layout from '@/components/layout/Layout'
 import LoadingScreen from '@/components/ui/LoadingScreen'
+import { useAuthStore } from '@/store/useAuthStore'
 
 // Lazy-loaded pages for code splitting
-const HomePage        = lazy(() => import('@/pages/HomePage'))
-const ExplorePage     = lazy(() => import('@/pages/ExplorePage'))
-const HuntDetailPage  = lazy(() => import('@/pages/HuntDetailPage'))
-const PlayHuntPage    = lazy(() => import('@/pages/PlayHuntPage'))
-const CreateHuntPage   = lazy(() => import('@/pages/CreateHuntPage'))
-const ManualCreatePage = lazy(() => import('@/pages/ManualCreatePage'))
-const AICreatePage     = lazy(() => import('@/pages/AICreatePage'))
-const LeaderboardPage = lazy(() => import('@/pages/LeaderboardPage'))
-const DashboardPage   = lazy(() => import('@/pages/DashboardPage'))
-const BusinessPage    = lazy(() => import('@/pages/BusinessPage'))
-const ProfilePage     = lazy(() => import('@/pages/ProfilePage'))
-const NotFoundPage    = lazy(() => import('@/pages/NotFoundPage'))
+const HomePage           = lazy(() => import('@/pages/HomePage'))
+const ExplorePage        = lazy(() => import('@/pages/ExplorePage'))
+const HuntDetailPage     = lazy(() => import('@/pages/HuntDetailPage'))
+const PlayHuntPage       = lazy(() => import('@/pages/PlayHuntPage'))
+const CreateHuntPage     = lazy(() => import('@/pages/CreateHuntPage'))
+const ManualCreatePage   = lazy(() => import('@/pages/ManualCreatePage'))
+const AICreatePage       = lazy(() => import('@/pages/AICreatePage'))
+const LeaderboardPage    = lazy(() => import('@/pages/LeaderboardPage'))
+const DashboardPage      = lazy(() => import('@/pages/DashboardPage'))
+const BusinessPage       = lazy(() => import('@/pages/BusinessPage'))
+const ProfilePage        = lazy(() => import('@/pages/ProfilePage'))
+const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
+const LoginPage          = lazy(() => import('@/pages/LoginPage'))
+const BrandDashboardPage = lazy(() => import('@/pages/BrandDashboardPage'))
+
+// ── Route guard: requires brand role ─────────────────────────────────────────
+function RequireBrand({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, role } = useAuthStore()
+  const location = useLocation()
+
+  if (!isAuthenticated || role !== 'brand') {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname }}
+      />
+    )
+  }
+  return <>{children}</>
+}
 
 export default function App() {
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
+        {/* Stand-alone login page — no shared Layout (no navbar/footer) */}
+        <Route path="/login" element={<LoginPage />} />
+
         <Route element={<Layout />}>
           <Route path="/"                  element={<HomePage />} />
           <Route path="/explore"           element={<ExplorePage />} />
@@ -35,7 +58,18 @@ export default function App() {
           <Route path="/business"          element={<BusinessPage />} />
           <Route path="/profile"           element={<ProfilePage />} />
           <Route path="/profile/:address"  element={<ProfilePage />} />
-          <Route path="*"                  element={<NotFoundPage />} />
+
+          {/* Brand-only protected route */}
+          <Route
+            path="/brand-dashboard"
+            element={
+              <RequireBrand>
+                <BrandDashboardPage />
+              </RequireBrand>
+            }
+          />
+
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </Suspense>
