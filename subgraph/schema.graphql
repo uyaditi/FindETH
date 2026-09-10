@@ -17,12 +17,19 @@ enum HuntStatus {
   Cancelled
 }
 
+enum Difficulty {
+  Easy
+  Medium
+  Hard
+  Expert
+}
+
 # ── Core entities ─────────────────────────────────────────────────────────────
 
 type Hunt @entity {
   id:               ID!                  # on-chain huntId as string
   creator:          Bytes!               # address
-  answerHash:       Bytes!               # bytes32
+  clueCount:        Int!                 # number of sequential clues
   prize:            BigInt!              # wei
   participantCount: BigInt!
   correctCount:     BigInt!
@@ -33,6 +40,14 @@ type Hunt @entity {
   winner:           Bytes                # address, null until solved
   vrfRequestId:     BigInt               # set when VRF requested
   prizeClaimed:     Boolean!
+
+  # Off-chain metadata (will be null until set via API/IPFS)
+  title:            String
+  description:      String
+  story:            String
+  difficulty:       Difficulty
+  category:         String
+  metadataURI:      String               # IPFS CID or API URL
 
   # Relations
   solutions:           [Solution!]!          @derivedFrom(field: "hunt")
@@ -60,6 +75,14 @@ type Solution @entity {
   correct:   Boolean!
   timestamp: BigInt!
   txHash:    Bytes!
+}
+
+type ClueSolve @entity {
+  id:        ID!      # huntId-clueIndex-player
+  hunt:      Hunt!
+  player:    Player!
+  clueIndex: Int!
+  timestamp: BigInt!
 }
 
 type RandomnessRequest @entity {

@@ -2,6 +2,7 @@ import { BigInt, Bytes, Address } from "@graphprotocol/graph-ts"
 import {
   HuntCreated,
   HuntParticipated,
+  ClueSolved,
   CorrectSolution,
   IncorrectSolution,
   HuntSolved,
@@ -13,7 +14,7 @@ import {
   HuntCancelled,
 } from "../generated/TreasureHunt/TreasureHunt"
 import {
-  Hunt, Player, Solution, RandomnessRequest,
+  Hunt, Player, Solution, ClueSolve, RandomnessRequest,
   Winner, PrizeClaim, NFT, GlobalStats,
 } from "../generated/schema"
 
@@ -50,7 +51,7 @@ function getOrCreateGlobalStats(): GlobalStats {
 export function handleHuntCreated(event: HuntCreated): void {
   const hunt = new Hunt(event.params.huntId.toString())
   hunt.creator          = event.params.creator
-  hunt.answerHash       = Bytes.empty()  // not emitted — stored on-chain only
+  hunt.clueCount        = event.params.clueCount.toI32()
   hunt.prize            = event.params.prize
   hunt.participantCount = BigInt.fromI32(0)
   hunt.correctCount     = BigInt.fromI32(0)
@@ -78,6 +79,20 @@ export function handleHuntParticipated(event: HuntParticipated): void {
   const stats = getOrCreateGlobalStats()
   stats.totalParticipants = stats.totalParticipants.plus(BigInt.fromI32(1))
   stats.save()
+}
+
+export function handleClueSolved(event: ClueSolved): void {
+  const huntId = event.params.huntId.toString()
+  const player = getOrCreatePlayer(event.params.player)
+  player.save()
+
+  const id = huntId + "-" + event.params.clueIndex.toString() + "-" + event.params.player.toHexString().toLowerCase()
+  const clueSolve = new ClueSolve(id)
+  clueSolve.hunt      = huntId
+  clueSolve.player    = player.id
+  clueSolve.clueIndex = event.params.clueIndex.toI32()
+  clueSolve.timestamp = event.block.timestamp
+  clueSolve.save()
 }
 
 export function handleCorrectSolution(event: CorrectSolution): void {
@@ -145,21 +160,29 @@ export function handleHuntSolved(event: HuntSolved): void {
 }
 
 export function handleRandomnessRequested(event: RandomnessRequested): void {
+  const huntId = event.params.huntId.toString()
   const reqId = event.params.requestId.toString()
   const req   = new RandomnessRequest(reqId)
-  req.hunt      = event.params.huntId.toString()
+  req.hunt      = huntId
   req.requestId = event.params.requestId
   req.fulfilled = false
   req.randomWord = null
   req.timestamp = event.block.timestamp
   req.save()
+
+  const hunt = Hunt.load(huntId)
+  if (hunt) {
+    hunt.vrfRequestId = event.params.requestId
+    hunt.save()
+  }
 }
 
 export function handleWinnerSelected(event: WinnerSelected): void {
-  const req = RandomnessRequest.load(
-    // Find by huntId — in production store requestId in hunt entity
-    event.params.huntId.toString()
-  )
+  const hunt = Hunt.load(event.params.huntId.toString())
+  if (!hunt) return
+  if (hunt.vrfRequestId === null) return
+
+  const req = RandomnessRequest.load(hunt.vrfRequestId!.toString())
   if (req) {
     req.fulfilled  = true
     req.randomWord = event.params.randomWord
