@@ -1,9 +1,42 @@
 import { GraphQLClient, gql } from 'graphql-request'
 import { SUBGRAPH_URL } from '@/lib/constants'
 import { Difficulty, HuntStatus, HuntType, type Hunt, type LeaderboardEntry, type HuntAnalytics } from '@/types'
-import { DEMO_HUNTS } from '@/data/demoHunts'
+import { getAllHuntMetadata, getHuntMetadata, type HuntMetadata } from '@/lib/huntMetadata'
 
 const client = new GraphQLClient(SUBGRAPH_URL)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metadata merge — real hunt titles/descriptions/clues come from the backend
+// (backend/), not the subgraph (which only ever knows on-chain fields).
+// When the subgraph itself is unreachable (e.g. not deployed for local dev),
+// these functions return empty results so callers (useHunt.ts) fall back to
+// reading directly from the chain instead of masking real hunts with fake data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function mapMetadata(m: HuntMetadata | null | undefined): Partial<Hunt> {
+  if (!m) return {}
+  return {
+    title:          m.title,
+    description:    m.description,
+    story:          m.story,
+    difficulty:     m.difficulty,
+    category:       m.category,
+    tags:           m.tags,
+    clues:          m.clues?.map(c => ({
+      id:       `${c.order}`,
+      order:    c.order,
+      text:     c.text,
+      hint:     c.hint,
+      location: { url: c.url, page: c.page, section: c.section, label: c.label },
+    })),
+    isBusiness:     m.isBusiness,
+    businessName:   m.businessName,
+    businessLogo:   m.businessLogo,
+    businessAccent: m.businessAccent,
+    isAiGenerated:  m.isAiGenerated,
+    aiConfidence:   m.aiConfidence,
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Queries
@@ -147,35 +180,40 @@ export async function fetchHunts(options: {
 
   try {
     const where = status !== undefined ? { status: String(status) } : undefined
-    const data = await client.request<{ hunts: Record<string, string>[] }>(HUNTS_QUERY, {
-      first, skip, where,
-    })
+    const [data, metadataList] = await Promise.all([
+      client.request<{ hunts: Record<string, string>[] }>(HUNTS_QUERY, { first, skip, where }),
+      getAllHuntMetadata(),
+    ])
+    const metaById = new Map(metadataList.map(m => [m.huntId, m]))
 
     return data.hunts.map(raw => ({
       ...mapHunt(raw),
-      // Merge demo metadata if ID matches
-      ...(DEMO_HUNTS.find(d => d.id === raw.id) ?? {}),
+      ...mapMetadata(metaById.get(raw.id)),
       id: raw.id,
     })) as Hunt[]
   } catch {
-    // Subgraph unavailable — return demo hunts
-    return DEMO_HUNTS
+    // Subgraph unreachable/not deployed (the common case for local dev) —
+    // return empty so callers fall back to reading directly from the chain,
+    // rather than masking real on-chain hunts behind hardcoded demo data.
+    return []
   }
 }
 
 export async function fetchHunt(id: string): Promise<Hunt | null> {
   try {
-    const data = await client.request<{ hunt: Record<string, string> | null }>(HUNT_QUERY, { id })
+    const [data, metadata] = await Promise.all([
+      client.request<{ hunt: Record<string, string> | null }>(HUNT_QUERY, { id }),
+      getHuntMetadata(id),
+    ])
     if (!data.hunt) return null
 
-    const demo = DEMO_HUNTS.find(d => d.id === id)
     return {
-      ...(demo ?? {}),
+      ...mapMetadata(metadata),
       ...mapHunt(data.hunt),
       id,
     } as Hunt
   } catch {
-    return DEMO_HUNTS.find(d => d.id === id) ?? null
+    return null
   }
 }
 
@@ -201,13 +239,18 @@ export async function fetchLeaderboard(first = 50): Promise<LeaderboardEntry[]> 
 
 export async function fetchCreatorHunts(creatorAddress: string): Promise<Hunt[]> {
   try {
-    const data = await client.request<{ hunts: Record<string, string>[] }>(
-      CREATOR_HUNTS_QUERY,
-      { creator: creatorAddress.toLowerCase() }
-    )
+    const [data, metadataList] = await Promise.all([
+      client.request<{ hunts: Record<string, string>[] }>(
+        CREATOR_HUNTS_QUERY,
+        { creator: creatorAddress.toLowerCase() }
+      ),
+      getAllHuntMetadata(),
+    ])
+    const metaById = new Map(metadataList.map(m => [m.huntId, m]))
+
     return data.hunts.map(raw => ({
       ...mapHunt(raw),
-      ...(DEMO_HUNTS.find(d => d.id === raw.id) ?? {}),
+      ...mapMetadata(metaById.get(raw.id)),
       id: raw.id,
     })) as Hunt[]
   } catch {

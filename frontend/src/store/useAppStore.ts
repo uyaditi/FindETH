@@ -36,7 +36,6 @@ const defaultForm: CreateHuntForm = {
   clues:       [],
   huntType:    HuntType.Race,
   prize:       '0.05',
-  finalAnswer: '',
   isBusiness:  false,
   businessName: '',
   businessLogo: '',

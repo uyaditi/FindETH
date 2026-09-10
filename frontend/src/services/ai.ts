@@ -2,16 +2,19 @@
  * AI Hunt Generation Service
  *
  * Architecture:
- *   Frontend → POST /api/ai/generate → AI backend (OpenAI / Anthropic)
- *                                    → content discovery + extraction
- *                                    → hunt draft
+ *   Frontend → POST {VITE_AI_API}/api/ai/generate → backend/ (FastAPI)
+ *                                                  → fetches businessUrl content
+ *                                                  → Gemini 2.5 Flash (structured JSON output)
+ *                                                  → hunt draft grounded in real page content
  *
- * For the hackathon MVP, this module provides:
- *   1. A real API call path (when VITE_AI_API is set)
- *   2. A detailed local simulation that demonstrates the full pipeline
- *      without requiring an AI backend to be running.
- *
- * The simulation is clearly labelled as such in the UI — no faking.
+ * This module provides two paths:
+ *   1. The real path — set VITE_AI_API to your running backend
+ *      (e.g. http://localhost:8000, see backend/README.md) to get real,
+ *      content-grounded clues from Gemini.
+ *   2. A local simulation used only when VITE_AI_API is unset — useful for
+ *      frontend-only development without the backend running. Clearly
+ *      labelled as a demo in the UI — never silently substituted for a
+ *      configured backend's failure.
  */
 
 import type {
@@ -61,7 +64,8 @@ async function generateViaAPI(input: AIHuntGenerationInput): Promise<AIGenerated
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}))
-    throw new Error(err.message || 'AI generation failed.')
+    // FastAPI's default error shape is { detail: "..." }, not { message: "..." }
+    throw new Error(err.detail || err.message || 'AI generation failed.')
   }
 
   return resp.json()
@@ -228,7 +232,10 @@ export async function regenerateClue(
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ clue, context }),
     })
-    if (!resp.ok) throw new Error('Clue regeneration failed.')
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}))
+      throw new Error(err.detail || err.message || 'Clue regeneration failed.')
+    }
     return resp.json()
   }
 

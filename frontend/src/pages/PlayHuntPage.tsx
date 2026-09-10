@@ -8,7 +8,7 @@ import {
 import { useAccount } from 'wagmi'
 
 import { useHunt } from '@/hooks/useHunt'
-import { useHuntParticipation } from '@/hooks/useHunt'
+import { useHuntParticipation, useClueProgress } from '@/hooks/useHunt'
 import { useSubmitAnswer } from '@/hooks/useHuntActions'
 import { useCloseAndDraw } from '@/hooks/useHuntActions'
 import { useUIStore } from '@/store/useAppStore'
@@ -25,12 +25,15 @@ export default function PlayHuntPage() {
   const { address } = useAccount()
 
   const { hunt, isLoading } = useHunt(id)
-  const { hasSolved }       = useHuntParticipation(id, address)
-  const { submitAnswer, txStatus, isPending, wasCorrect } = useSubmitAnswer(id)
+  const { hasSolved, refetch: refetchParticipation } = useHuntParticipation(id, address)
+  const { submitAnswer, txStatus, isPending, advancedClue, wonHunt } = useSubmitAnswer(id)
   const { closeAndDraw, txStatus: drawStatus, isPending: drawPending } = useCloseAndDraw(id)
+  const { clueIndex: onChainClueIndex, refetch: refetchClueProgress } = useClueProgress(id, address)
 
   const { getClueProgress, setClueProgress } = useUIStore()
-  const currentClueIndex = getClueProgress(id ?? '')
+  // On-chain progress is authoritative; the local store only bridges the gap
+  // between "tx confirmed" and the next on-chain read.
+  const currentClueIndex = onChainClueIndex ?? getClueProgress(id ?? '')
 
   const [answer, setAnswer]     = useState('')
   const [showHint, setShowHint] = useState(false)
@@ -42,25 +45,30 @@ export default function PlayHuntPage() {
     inputRef.current?.focus()
   }, [currentClueIndex])
 
-  // Advance clue on correct answer
+  // Advance clue on correct answer — driven by on-chain events, not guesswork.
   useEffect(() => {
-    if (wasCorrect === true && id) {
+    if (advancedClue === true && id) {
       setLastResult('correct')
       setAnswer('')
       setShowHint(false)
-      const next = currentClueIndex + 1
-      if (hunt?.clues && next < hunt.clues.length) {
-        setTimeout(() => {
-          setClueProgress(id, next)
-          setLastResult(null)
-        }, 1800)
+
+      // Optimistic local bump so the UI moves immediately; the on-chain read
+      // (refetched below) is the eventual source of truth.
+      setClueProgress(id, currentClueIndex + 1)
+      refetchClueProgress()
+
+      if (wonHunt) {
+        refetchParticipation()
+      } else {
+        setTimeout(() => setLastResult(null), 1800)
       }
     }
-    if (wasCorrect === false) {
+    if (advancedClue === false) {
       setLastResult('incorrect')
       setTimeout(() => setLastResult(null), 2500)
     }
-  }, [wasCorrect, id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advancedClue, wonHunt, id])
 
   if (isLoading) {
     return (
@@ -329,7 +337,7 @@ export default function PlayHuntPage() {
               Close the hunt to trigger the Chainlink VRF draw.
             </p>
             <TxButton
-              onClick={closeAndDraw}
+              onClick={() => { void closeAndDraw() }}
               txState={drawStatus.state}
               isPending={drawPending}
               disabled={hunt.correctCount === 0}

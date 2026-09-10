@@ -25,7 +25,7 @@ export enum Difficulty {
 export interface OnChainHunt {
   id:               bigint
   creator:          `0x${string}`
-  answerHash:       `0x${string}`
+  clueCount:        bigint
   prize:            bigint
   participantCount: bigint
   correctCount:     bigint
@@ -39,10 +39,18 @@ export interface OnChainHunt {
 }
 
 // ── Extended hunt with off-chain / indexed metadata ───────────────────────────
-export interface Hunt extends Partial<OnChainHunt> {
+// Deliberately not `extends OnChainHunt` — every field the UI needs is
+// redeclared below with UI-friendly types (number/string instead of
+// bigint/`0x${string}`), since the two shapes diverge on almost every field.
+export interface Hunt {
   // Core identity
   id:          string        // string for UI (bigint serialisation)
   onChainId?:  bigint
+
+  // Raw on-chain extras not otherwise represented above
+  clueCount?:    bigint
+  vrfRequestId?: bigint
+  prizeClaimed?: boolean
 
   // Metadata (stored off-chain / in subgraph)
   title:       string
@@ -90,7 +98,8 @@ export interface Clue {
   order:    number
   text:     string
   hint?:    string
-  answer:   string           // plaintext — never sent on-chain
+  answer?:  string           // plaintext — only ever present client-side during creation review;
+                              // the backend never stores or returns it (only the on-chain hash exists after publish)
   location: ClueLocation
   imageUrl?: string
 
@@ -219,9 +228,6 @@ export interface CreateHuntForm {
   // Step 3 — Reward
   huntType:    HuntType
   prize:       string    // ETH string
-
-  // Step 4 — Final answer (normalised before hashing)
-  finalAnswer: string
 
   // Business/branding
   isBusiness:    boolean

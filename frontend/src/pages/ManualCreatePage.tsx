@@ -1,20 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import {
   ChevronRight, ChevronLeft, Plus, Trash2, GripVertical,
-  Eye, EyeOff, ShieldCheck, Sparkles, CheckCircle,
+  ShieldCheck, Sparkles, CheckCircle,
   Zap, Shuffle, Copy,
 } from 'lucide-react'
-import { useAccount, useChainId } from 'wagmi'
+import { useAccount, useChainId, useSignMessage } from 'wagmi'
 
 
 import { useCreateHunt } from '@/hooks/useHuntActions'
 import TxButton from '@/components/ui/TxButton'
 import TxStatusBanner from '@/components/ui/TxStatusBanner'
+import { saveHuntMetadata, metadataPublishMessage } from '@/lib/huntMetadata'
 import { cn, copyToClipboard, formatEth } from '@/lib/utils'
-import { hashAnswer, spoilerSafe } from '@/lib/answerHash'
+import { hashAnswer } from '@/lib/answerHash'
 import {
   DIFFICULTIES, HUNT_TYPES, HUNT_CATEGORIES,
   MAX_CLUES, MAX_TITLE_LEN, MAX_DESC_LEN,
@@ -29,8 +30,7 @@ const STEPS = [
   { n: 1, label: 'The Mystery' },
   { n: 2, label: 'The Clues'   },
   { n: 3, label: 'The Reward'  },
-  { n: 4, label: 'Final Answer' },
-  { n: 5, label: 'Review'      },
+  { n: 4, label: 'Review'      },
 ]
 
 function StepBar({ current }: { current: number }) {
@@ -176,14 +176,14 @@ export default function ManualCreatePage() {
   const navigate  = useNavigate()
   const chainId   = useChainId()
   const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
 
   const [step, setStep]           = useState(1)
   const [clues, setClues]         = useState<ClueFormItem[]>([])
-  const [showAnswer, setShowAnswer] = useState(false)
   const [published, setPublished]  = useState(false)
-  const [newHuntId, setNewHuntId]  = useState<string>()
+  const [metadataError, setMetadataError] = useState<string | null>(null)
 
-  const { createHunt, txStatus, isPending, isSuccess } = useCreateHunt()
+  const { createHunt, txStatus, isPending, isSuccess, newHuntId } = useCreateHunt()
 
   const { register, watch, handleSubmit, formState: { errors }, getValues } = useForm({
     defaultValues: {
@@ -194,7 +194,6 @@ export default function ManualCreatePage() {
       category:    'General',
       huntType:    HuntType.Race,
       prize:       '0.05',
-      finalAnswer: '',
       endDays:     '7',
       isBusiness:  false,
       businessName: '',
@@ -202,8 +201,9 @@ export default function ManualCreatePage() {
   })
 
   const watchedHuntType    = watch('huntType')
-  const watchedFinalAnswer = watch('finalAnswer')
   const watchedPrize       = watch('prize')
+  const watchedTitle       = watch('title')
+  const watchedDescription = watch('description')
 
   // ── Clue management ──────────────────────────────────────────────────────
 
@@ -237,32 +237,75 @@ export default function ManualCreatePage() {
       : 0
 
     try {
-      const hash = await createHunt({
-        finalAnswer: values.finalAnswer,
+      // Note: don't set `published` here — that flag is reserved for "the
+      // metadata-publish effect below has run" so it can guard against
+      // re-running itself. The success screen renders off `isSuccess` alone,
+      // which becomes true once the transaction is actually confirmed.
+      await createHunt({
+        clueAnswers: clues.map(c => c.answer),
         huntType:    Number(values.huntType) as HuntType,
         endTime,
         prizeEth:    values.prize,
       })
-      if (hash) {
-        setPublished(true)
-        setNewHuntId('1') // In production parse from receipt logs
-      }
     } catch { /* error handled by hook */ }
   }
 
-  const next = () => setStep(s => Math.min(s + 1, 5))
+  const next = () => setStep(s => Math.min(s + 1, 4))
   const prev = () => setStep(s => Math.max(s - 1, 1))
 
-  // ── Step validation ───────────────────────────────────────────────────────
+  // ── Step validation (reactive) ────────────────────────────────────────────
+
+  const canAdvanceStep1 = watchedTitle.trim().length > 0 && watchedDescription.trim().length > 0
+  const canAdvanceStep2 = clues.length > 0 && clues.every(c => c.text.trim() && c.answer.trim())
+  const canAdvanceStep3 = parseFloat(watchedPrize) > 0
 
   const canAdvance = () => {
-    const v = getValues()
-    if (step === 1) return v.title.trim().length > 0 && v.description.trim().length > 0
-    if (step === 2) return clues.length > 0 && clues.every(c => c.text.trim() && c.answer.trim())
-    if (step === 3) return parseFloat(v.prize) > 0
-    if (step === 4) return v.finalAnswer.trim().length > 0
+    if (step === 1) return canAdvanceStep1
+    if (step === 2) return canAdvanceStep2
+    if (step === 3) return canAdvanceStep3
     return true
   }
+
+  // ── Publish metadata once the hunt is confirmed on-chain ──────────────────
+  // The creator signs a message proving they control the hunt's creator address;
+  // the backend verifies that signature against the on-chain `creator` before
+  // accepting the write, so nobody else can publish/overwrite this hunt's metadata.
+
+  useEffect(() => {
+    if (!isSuccess || !newHuntId || published || !address) return
+
+    const publish = async () => {
+      const values = getValues()
+      try {
+        const signature = await signMessageAsync({ message: metadataPublishMessage(newHuntId) })
+        await saveHuntMetadata({
+          huntId: newHuntId,
+          title: values.title,
+          description: values.description,
+          story: values.story,
+          difficulty: values.difficulty as Difficulty,
+          category: values.category,
+          tags: [],
+          clues: clues.map(c => ({
+            order: c.order,
+            text: c.text,
+            hint: c.hint,
+            url: c.url,
+            page: c.page,
+          })),
+          isBusiness: false,
+          isAiGenerated: false,
+          creator: address,
+        }, signature)
+      } catch (err) {
+        setMetadataError(err instanceof Error ? err.message : 'Failed to publish hunt metadata.')
+      } finally {
+        setPublished(true)
+      }
+    }
+    publish()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, newHuntId, published, address])
 
   // ── Published success ────────────────────────────────────────────────────
 
@@ -281,6 +324,12 @@ export default function ManualCreatePage() {
             <h1 className="font-serif text-3xl font-bold text-bright mb-2">🎉 Your Hunt is Live!</h1>
             <p className="text-dim">Share your hunt and let the world solve it.</p>
           </div>
+          {metadataError && (
+            <div className="card w-full p-4 border-danger/30 bg-danger/5 text-danger text-sm text-left">
+              Hunt is live on-chain, but publishing its title/clue text failed: {metadataError}.
+              Players can still solve it, but the page may only show "Hunt #{newHuntId}" until this is fixed.
+            </div>
+          )}
           <div className="card w-full p-4 flex gap-2">
             <input
               readOnly
@@ -475,65 +524,9 @@ export default function ManualCreatePage() {
           </motion.div>
         )}
 
-        {/* ── STEP 4: Final Answer ─────────────────────────────────────── */}
+        {/* ── STEP 4: Review & Publish ─────────────────────────────────── */}
         {step === 4 && (
           <motion.div key="s4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-5">
-            <div className="card p-5 border-arcane/20 bg-arcane/5">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="w-5 h-5 text-arcane-light shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-bright text-sm mb-1">Answer Security</p>
-                  <p className="text-dim text-xs leading-relaxed">
-                    Your answer is cryptographically hashed before being stored on-chain.
-                    Only the hash is ever stored — the plaintext is never visible on the blockchain.
-                    Normalisation: trimmed + lowercased.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="input-label">Final Answer *</label>
-              <div className="relative">
-                <input
-                  type={showAnswer ? 'text' : 'password'}
-                  {...register('finalAnswer', { required: true })}
-                  placeholder="Enter the final answer..."
-                  className="input-field pr-12"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAnswer(!showAnswer)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-bright"
-                >
-                  {showAnswer ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-dim text-xs mt-1">This is what players must ultimately discover.</p>
-            </div>
-
-            {watchedFinalAnswer && (
-              <div className="card p-4 space-y-3">
-                <div>
-                  <p className="text-muted text-xs mb-1">Normalised form</p>
-                  <p className="text-dim font-mono text-sm">{watchedFinalAnswer.trim().toLowerCase()}</p>
-                </div>
-                <div>
-                  <p className="text-muted text-xs mb-1">Preview (spoiler-safe)</p>
-                  <p className="text-dim font-mono text-sm">{spoilerSafe(watchedFinalAnswer)}</p>
-                </div>
-                <div>
-                  <p className="text-muted text-xs mb-1">On-chain hash (keccak256)</p>
-                  <p className="text-dim font-mono text-xs break-all">{hashAnswer(watchedFinalAnswer)}</p>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* ── STEP 5: Review & Publish ─────────────────────────────────── */}
-        {step === 5 && (
-          <motion.div key="s5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-5">
             {(() => {
               const v = getValues()
               return (
@@ -590,10 +583,26 @@ export default function ManualCreatePage() {
                     </div>
 
                     <div className="divider" />
-                    <div>
-                      <p className="text-muted text-xs mb-1">Final Answer (hash only)</p>
-                      <p className="text-dim font-mono text-xs break-all">{hashAnswer(v.finalAnswer)}</p>
-                      <p className="text-muted text-[11px] mt-1">Your answer is protected. Only its cryptographic hash is stored on-chain.</p>
+                    <div className="card p-4 border-arcane/20 bg-arcane/5">
+                      <div className="flex items-start gap-3 mb-3">
+                        <ShieldCheck className="w-5 h-5 text-arcane-light shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-bright text-sm mb-1">Answer Security</p>
+                          <p className="text-dim text-xs leading-relaxed">
+                            Each clue's answer is hashed and stored on-chain separately. Players must solve
+                            them in order — the last clue's answer is what ultimately completes the hunt.
+                            Plaintext never leaves your browser.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        {clues.map((c, i) => (
+                          <div key={c.id} className="flex items-center gap-2 text-xs">
+                            <span className="text-gold font-mono shrink-0">{String(i + 1).padStart(2, '0')}</span>
+                            <p className="text-dim font-mono break-all">{c.answer ? hashAnswer(c.answer) : '—'}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -630,7 +639,7 @@ export default function ManualCreatePage() {
         >
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
-        {step < 5 && (
+        {step < 4 && (
           <button
             onClick={next}
             disabled={!canAdvance()}

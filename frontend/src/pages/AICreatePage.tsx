@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAccount, useSignMessage } from 'wagmi'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import {
@@ -11,6 +12,7 @@ import { generateHunt, regenerateClue, PIPELINE_STEPS, type PipelineStep } from 
 import { useCreateHunt } from '@/hooks/useHuntActions'
 import TxButton from '@/components/ui/TxButton'
 import TxStatusBanner from '@/components/ui/TxStatusBanner'
+import { saveHuntMetadata, metadataPublishMessage } from '@/lib/huntMetadata'
 import { cn, copyToClipboard } from '@/lib/utils'
 import { hashAnswer, spoilerSafe } from '@/lib/answerHash'
 import {
@@ -424,14 +426,18 @@ function GeneratedHuntReview({
 
 export default function AICreatePage() {
   const navigate = useNavigate()
+  const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
 
   const [phase, setPhase]       = useState<'input' | 'generating' | 'review'>('input')
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>('idle')
   const [draft, setDraft]       = useState<AIGeneratedHunt | null>(null)
   const [input, setInput]       = useState<AIHuntGenerationInput | null>(null)
   const [error, setError]       = useState<string | null>(null)
+  const [published, setPublished] = useState(false)
+  const [metadataError, setMetadataError] = useState<string | null>(null)
 
-  const { createHunt, txStatus, isPending, isSuccess } = useCreateHunt()
+  const { createHunt, txStatus, isPending, isSuccess, newHuntId } = useCreateHunt()
 
   const handleGenerate = async (formInput: AIHuntGenerationInput) => {
     setInput(formInput)
@@ -474,12 +480,53 @@ export default function AICreatePage() {
   const handlePublish = async () => {
     if (!draft || !input) return
     await createHunt({
-      finalAnswer: draft.finalAnswer,
+      clueAnswers: draft.clues.map(c => c.answer),
       huntType:    draft.huntType,
       endTime:     Math.floor(Date.now() / 1000) + 7 * 86400,
       prizeEth:    draft.suggestedPrize || input.prize,
     })
   }
+
+  // Publish metadata once the hunt is confirmed on-chain — signed by the
+  // creator so the backend can verify it against the on-chain creator address.
+  useEffect(() => {
+    if (!isSuccess || !newHuntId || published || !address || !draft || !input) return
+
+    const publish = async () => {
+      try {
+        const signature = await signMessageAsync({ message: metadataPublishMessage(newHuntId) })
+        await saveHuntMetadata({
+          huntId: newHuntId,
+          title: draft.title,
+          description: draft.description,
+          story: draft.story,
+          difficulty: draft.difficulty,
+          category: 'Business',
+          tags: ['ai-generated', 'business'],
+          clues: draft.clues.map(c => ({
+            order: c.order,
+            text: c.text,
+            url: c.location?.url,
+            page: c.location?.page,
+            section: c.location?.section,
+            label: c.location?.label,
+          })),
+          isBusiness: true,
+          businessName: input.businessName,
+          businessLogo: '🏢',
+          isAiGenerated: true,
+          aiConfidence: draft.confidence,
+          creator: address,
+        }, signature)
+      } catch (err) {
+        setMetadataError(err instanceof Error ? err.message : 'Failed to publish hunt metadata.')
+      } finally {
+        setPublished(true)
+      }
+    }
+    publish()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, newHuntId, published, address])
 
   // Success state
   if (isSuccess) {
@@ -493,8 +540,14 @@ export default function AICreatePage() {
             <h1 className="font-serif text-3xl font-bold text-bright mb-2">🎉 AI Hunt is Live!</h1>
             <p className="text-dim">Your AI-generated business hunt has been published.</p>
           </div>
+          {metadataError && (
+            <div className="card w-full p-4 border-danger/30 bg-danger/5 text-danger text-sm text-left">
+              Hunt is live on-chain, but publishing its title/clue text failed: {metadataError}.
+              Players can still solve it, but the page may only show "Hunt #{newHuntId}" until this is fixed.
+            </div>
+          )}
           <div className="flex gap-3">
-            <button onClick={() => navigate('/hunt/1')} className="btn-arcane">View Hunt</button>
+            <button onClick={() => navigate(`/hunt/${newHuntId ?? '1'}`)} className="btn-arcane">View Hunt</button>
             <button onClick={() => navigate('/business')} className="btn-secondary">Dashboard</button>
           </div>
         </motion.div>

@@ -16,7 +16,7 @@ export const TREASURE_HUNT_ABI = [
       components: [
         { name: 'id',               type: 'uint256' },
         { name: 'creator',          type: 'address' },
-        { name: 'answerHash',       type: 'bytes32' },
+        { name: 'clueCount',        type: 'uint256' },
         { name: 'prize',            type: 'uint256' },
         { name: 'participantCount', type: 'uint256' },
         { name: 'correctCount',     type: 'uint256' },
@@ -43,6 +43,20 @@ export const TREASURE_HUNT_ABI = [
     stateMutability: 'view',
     inputs:  [{ name: 'huntId', type: 'uint256' }],
     outputs: [{ name: '', type: 'address[]' }],
+  },
+  {
+    name: 'getClueHashes',
+    type: 'function',
+    stateMutability: 'view',
+    inputs:  [{ name: 'huntId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bytes32[]' }],
+  },
+  {
+    name: 'getClueProgress',
+    type: 'function',
+    stateMutability: 'view',
+    inputs:  [{ name: 'huntId', type: 'uint256' }, { name: 'player', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
   },
   {
     name: 'getCorrectSolverCount',
@@ -93,7 +107,7 @@ export const TREASURE_HUNT_ABI = [
     type: 'function',
     stateMutability: 'payable',
     inputs: [
-      { name: 'answerHash', type: 'bytes32' },
+      { name: 'clueHashes', type: 'bytes32[]' },
       { name: 'huntType',   type: 'uint8'   },
       { name: 'endTime',    type: 'uint256' },
     ],
@@ -104,8 +118,8 @@ export const TREASURE_HUNT_ABI = [
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
-      { name: 'huntId',     type: 'uint256' },
-      { name: 'answerHash', type: 'bytes32' },
+      { name: 'huntId',    type: 'uint256' },
+      { name: 'guessHash', type: 'bytes32' },
     ],
     outputs: [],
   },
@@ -129,11 +143,12 @@ export const TREASURE_HUNT_ABI = [
     name: 'HuntCreated',
     type: 'event',
     inputs: [
-      { name: 'huntId',   type: 'uint256', indexed: true  },
-      { name: 'creator',  type: 'address', indexed: true  },
-      { name: 'huntType', type: 'uint8',   indexed: false },
-      { name: 'prize',    type: 'uint256', indexed: false },
-      { name: 'endTime',  type: 'uint256', indexed: false },
+      { name: 'huntId',    type: 'uint256', indexed: true  },
+      { name: 'creator',   type: 'address', indexed: true  },
+      { name: 'huntType',  type: 'uint8',   indexed: false },
+      { name: 'prize',     type: 'uint256', indexed: false },
+      { name: 'endTime',   type: 'uint256', indexed: false },
+      { name: 'clueCount', type: 'uint256', indexed: false },
     ],
   },
   {
@@ -142,6 +157,16 @@ export const TREASURE_HUNT_ABI = [
     inputs: [
       { name: 'huntId', type: 'uint256', indexed: true },
       { name: 'player', type: 'address', indexed: true },
+    ],
+  },
+  {
+    name: 'ClueSolved',
+    type: 'event',
+    inputs: [
+      { name: 'huntId',    type: 'uint256', indexed: true  },
+      { name: 'player',    type: 'address', indexed: true  },
+      { name: 'clueIndex', type: 'uint256', indexed: false },
+      { name: 'clueCount', type: 'uint256', indexed: false },
     ],
   },
   {

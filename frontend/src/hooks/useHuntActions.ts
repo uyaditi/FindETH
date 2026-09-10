@@ -21,13 +21,14 @@ export function useCreateHunt() {
   const { writeContractAsync, isPending } = useWriteContract()
   const [txStatus, setTxStatus] = useState<TxStatus>({ state: 'idle' })
   const [txHash, setTxHash]     = useState<`0x${string}` | undefined>()
+  const [newHuntId, setNewHuntId] = useState<string | undefined>()
 
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({
     hash: txHash,
   })
 
   const createHunt = useCallback(async (params: {
-    finalAnswer: string
+    clueAnswers: string[]  // plaintext, in order — the last one is effectively the "final answer"
     huntType:    HuntType
     endTime:     number   // unix timestamp, 0 = no deadline
     prizeEth:    string   // "0.05"
@@ -35,14 +36,14 @@ export function useCreateHunt() {
     try {
       setTxStatus({ state: 'confirming', message: 'Waiting for wallet confirmation...' })
 
-      const answerHash = hashAnswer(params.finalAnswer)
-      const prizeWei   = parseEther(params.prizeEth)
+      const clueHashes = params.clueAnswers.map(hashAnswer)
+      const prizeWei    = parseEther(params.prizeEth)
 
       const hash = await writeContractAsync({
         address:      addresses.TREASURE_HUNT,
         abi:          TREASURE_HUNT_ABI,
         functionName: 'createHunt',
-        args:         [answerHash, params.huntType, BigInt(params.endTime)],
+        args:         [clueHashes, params.huntType, BigInt(params.endTime)],
         value:        prizeWei,
       })
 
@@ -59,10 +60,22 @@ export function useCreateHunt() {
     }
   }, [addresses, writeContractAsync])
 
-  // When confirmed
-  if (isSuccess && txStatus.state === 'pending') {
-    setTxStatus({ state: 'success', hash: txHash, message: 'Hunt published successfully!' })
-    toast.success('Hunt is live!', { id: 'create-hunt' })
+  // When confirmed, extract hunt ID from receipt
+  if (isSuccess && txStatus.state === 'pending' && receipt) {
+    // Parse HuntCreated event to get the huntId
+    const huntCreatedTopic = keccak256(toHex('HuntCreated(uint256,address,uint8,uint256,uint256,uint256)'))
+    const huntCreatedLog = receipt.logs.find(log => log.topics[0] === huntCreatedTopic)
+    
+    if (huntCreatedLog && huntCreatedLog.topics[1]) {
+      // huntId is the first indexed parameter (topics[1])
+      const huntId = BigInt(huntCreatedLog.topics[1]).toString()
+      setNewHuntId(huntId)
+      setTxStatus({ state: 'success', hash: txHash, message: 'Hunt published successfully!' })
+      toast.success('Hunt is live!', { id: 'create-hunt' })
+    } else {
+      setTxStatus({ state: 'success', hash: txHash, message: 'Hunt published successfully!' })
+      toast.success('Hunt is live!', { id: 'create-hunt' })
+    }
   }
 
   return {
@@ -71,6 +84,7 @@ export function useCreateHunt() {
     isPending: isPending || isConfirming,
     isSuccess,
     txHash,
+    newHuntId,
   }
 }
 
@@ -95,13 +109,13 @@ export function useSubmitAnswer(huntId: string | undefined) {
     try {
       setTxStatus({ state: 'confirming', message: 'Waiting for wallet confirmation...' })
 
-      const answerHash = hashAnswer(rawAnswer)
+      const guessHash = hashAnswer(rawAnswer)
 
       const hash = await writeContractAsync({
         address:      addresses.TREASURE_HUNT,
         abi:          TREASURE_HUNT_ABI,
         functionName: 'submitAnswer',
-        args:         [BigInt(huntId), answerHash],
+        args:         [BigInt(huntId), guessHash],
       })
 
       setTxHash(hash)
@@ -117,21 +131,30 @@ export function useSubmitAnswer(huntId: string | undefined) {
     }
   }, [huntId, addresses, writeContractAsync])
 
-  // Detect correct vs incorrect from receipt events
-  const wasCorrect = isSuccess && receipt
-    ? receipt.logs.some(log => {
-        // CorrectSolution event topic0
-        try {
-          return log.topics[0] === keccak256(toHex('CorrectSolution(uint256,address,uint256)'))
-        } catch { return false }
-      })
+  // Detect clue-advance vs full-hunt-win vs incorrect from receipt events.
+  // A clue-correct guess emits ClueSolved; only the *final* clue additionally emits CorrectSolution.
+  const clueSolvedTopic     = keccak256(toHex('ClueSolved(uint256,address,uint256,uint256)'))
+  const correctSolutionTopic = keccak256(toHex('CorrectSolution(uint256,address,uint256)'))
+
+  const advancedClue = isSuccess && receipt
+    ? receipt.logs.some(log => { try { return log.topics[0] === clueSolvedTopic } catch { return false } })
     : undefined
 
+  const wonHunt = isSuccess && receipt
+    ? receipt.logs.some(log => { try { return log.topics[0] === correctSolutionTopic } catch { return false } })
+    : undefined
+
+  // Backwards-compatible flag: "was this guess correct for the clue the player was on"
+  const wasCorrect = isSuccess && receipt ? advancedClue : undefined
+
   if (isSuccess && txStatus.state === 'pending') {
-    if (wasCorrect) {
-      setTxStatus({ state: 'success', hash: txHash, message: 'Correct! Your answer was accepted.' })
-      toast.success('Correct answer!', { id: 'submit-answer' })
-    } else if (wasCorrect === false) {
+    if (wonHunt) {
+      setTxStatus({ state: 'success', hash: txHash, message: 'Correct! You solved the final clue.' })
+      toast.success('Hunt solved!', { id: 'submit-answer' })
+    } else if (advancedClue) {
+      setTxStatus({ state: 'success', hash: txHash, message: 'Correct! Moving to the next clue.' })
+      toast.success('Correct!', { id: 'submit-answer' })
+    } else if (advancedClue === false) {
       setTxStatus({ state: 'success', hash: txHash, message: "That's not it. Keep searching." })
       toast.error("That's not it. Keep searching.", { id: 'submit-answer', duration: 4000 })
     } else {
@@ -146,6 +169,8 @@ export function useSubmitAnswer(huntId: string | undefined) {
     isPending: isPending || isConfirming,
     isSuccess,
     wasCorrect,
+    advancedClue,
+    wonHunt,
     txHash,
   }
 }
