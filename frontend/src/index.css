@@ -5,8 +5,51 @@
 /* ── Base ──────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
+    /* Dark theme (default) — cinematic mystery.
+       Colors are stored as "R G B" triplets so Tailwind can apply opacity
+       modifiers (e.g. bg-gold/20) via rgb(var(--color-gold-rgb) / <alpha>). */
+    --color-void-rgb:      10 6 18;
+    --color-deep-rgb:      13 6 24;
+    --color-deep-alt-rgb:  26 10 46;
+    --color-surface-rgb:   19 13 30;
+    --color-card-rgb:      26 17 40;
+    --color-border-rgb:    42 31 61;
+    --color-muted-rgb:     74 63 92;
+    --color-subtle-rgb:    107 95 122;
+    --color-dim-rgb:       148 163 184;
+    --color-body-rgb:      203 213 225;
+    --color-bright-rgb:    241 245 249;
+    --color-gold-rgb:      245 158 11;
+
+    --color-card:      #1a1128;
+    --color-bright:    #f1f5f9;
+    --color-border:    #2a1f3d;
+
     --scrollbar-thumb: #2a1f3d;
     --scrollbar-track: #0a0612;
+  }
+
+  :root.light {
+    /* Light theme */
+    --color-void-rgb:      248 246 252;
+    --color-deep-rgb:      240 236 247;
+    --color-deep-alt-rgb:  236 228 247;
+    --color-surface-rgb:   255 255 255;
+    --color-card-rgb:      255 255 255;
+    --color-border-rgb:    227 221 238;
+    --color-muted-rgb:     180 169 198;
+    --color-subtle-rgb:    122 111 140;
+    --color-dim-rgb:       91 84 104;
+    --color-body-rgb:      55 44 68;
+    --color-bright-rgb:    21 15 34;
+    --color-gold-rgb:      180 83 9;
+
+    --color-card:      #ffffff;
+    --color-bright:    #150f22;
+    --color-border:    #e3ddee;
+
+    --scrollbar-thumb: #d9d0e6;
+    --scrollbar-track: #f0ecf7;
   }
 
   html {
@@ -18,6 +61,7 @@
   body {
     @apply bg-void text-body font-sans;
     min-height: 100vh;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   /* Custom scrollbar */

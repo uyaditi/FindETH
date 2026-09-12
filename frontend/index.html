@@ -12,6 +12,17 @@
     <meta property="og:description" content="Turn the internet into a treasure map. Discover. Solve. Win." />
     <meta property="og:type" content="website" />
 
+    <!-- Set theme before paint to avoid a flash of the wrong theme -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('ith-theme')
+          var wantsLight = stored === 'light' || (!stored && window.matchMedia('(prefers-color-scheme: light)').matches)
+          if (wantsLight) document.documentElement.classList.add('light')
+        } catch (e) {}
+      })()
+    </script>
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

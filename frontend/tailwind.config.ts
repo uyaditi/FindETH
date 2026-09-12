@@ -1,27 +1,38 @@
 import type { Config } from 'tailwindcss'
 
+// Themed tokens are stored as "R G B" triplets in CSS custom properties (see
+// index.css) so Tailwind's opacity modifiers (bg-gold/20, border-border/50…)
+// keep working — this returns a Tailwind color function backed by that var.
+function themed(varName: string) {
+  return ({ opacityValue }: { opacityValue?: string }) =>
+    opacityValue === undefined
+      ? `rgb(var(${varName}))`
+      : `rgb(var(${varName}) / ${opacityValue})`
+}
+
 export default {
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        // Core brand palette — dark cinematic mystery
-        void:    '#0a0612',
-        deep:    '#0d0618',
-        surface: '#130d1e',
-        card:    '#1a1128',
-        border:  '#2a1f3d',
-        muted:   '#4a3f5c',
-        subtle:  '#6b5f7a',
+        // Core brand palette — swaps per theme via CSS variables (see index.css)
+        void:    themed('--color-void-rgb'),
+        deep:    themed('--color-deep-rgb'),
+        surface: themed('--color-surface-rgb'),
+        card:    themed('--color-card-rgb'),
+        border:  themed('--color-border-rgb'),
+        muted:   themed('--color-muted-rgb'),
+        subtle:  themed('--color-subtle-rgb'),
         // Text
-        dim:     '#94a3b8',
-        body:    '#cbd5e1',
-        bright:  '#f1f5f9',
+        dim:     themed('--color-dim-rgb'),
+        body:    themed('--color-body-rgb'),
+        bright:  themed('--color-bright-rgb'),
         // Brand gold
-        gold:    '#f59e0b',
+        gold:    themed('--color-gold-rgb'),
         'gold-light': '#fcd34d',
         'gold-dark':  '#b45309',
         // Accent purple
@@ -40,8 +51,8 @@ export default {
         mono:  ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       backgroundImage: {
-        'hero-gradient':    'radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0a0612 60%)',
-        'card-gradient':    'linear-gradient(135deg, #1a1128 0%, #130d1e 100%)',
+        'hero-gradient':    'radial-gradient(ellipse at 50% 0%, rgb(var(--color-deep-alt-rgb)) 0%, rgb(var(--color-void-rgb)) 60%)',
+        'card-gradient':    'linear-gradient(135deg, rgb(var(--color-card-rgb)) 0%, rgb(var(--color-surface-rgb)) 100%)',
         'gold-gradient':    'linear-gradient(135deg, #f59e0b 0%, #fcd34d 100%)',
         'arcane-gradient':  'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
         'glow-gold':        'radial-gradient(circle at 50% 50%, rgba(245,158,11,0.15) 0%, transparent 70%)',
