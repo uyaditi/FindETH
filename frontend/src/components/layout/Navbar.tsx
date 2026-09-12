@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Compass, Trophy, LayoutDashboard, Sparkles, KeyRound, Sun, Moon } from 'lucide-react'
+import { Menu, X, Compass, Trophy, LayoutDashboard, Sparkles, KeyRound, Sun, Moon, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useAuthStore } from '@/store/useAuthStore'
 
 interface NavbarProps {
   minimal?: boolean
@@ -20,6 +21,8 @@ export default function Navbar({ minimal }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
+  const { isAuthenticated, role } = useAuthStore()
+  const isBrand = isAuthenticated && role === 'brand'
 
   return (
     <header className="sticky top-0 z-50 bg-void/90 backdrop-blur-md border-b border-border">
@@ -56,6 +59,23 @@ export default function Navbar({ minimal }: NavbarProps) {
                     {label}
                   </NavLink>
                 ))}
+                {/* ENS namespace — only for logged-in brands */}
+                {isBrand && (
+                  <NavLink
+                    to="/ens-namespace"
+                    className={({ isActive }) =>
+                      cn(
+                        'px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-1.5',
+                        isActive
+                          ? 'bg-arcane/10 text-arcane-light'
+                          : 'text-dim hover:text-bright hover:bg-surface'
+                      )
+                    }
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    ENS
+                  </NavLink>
+                )}
               </nav>
 
               {/* Right actions */}
@@ -143,6 +163,24 @@ export default function Navbar({ minimal }: NavbarProps) {
                   {label}
                 </NavLink>
               ))}
+              {/* ENS namespace link — brand only */}
+              {isBrand && (
+                <NavLink
+                  to="/ens-namespace"
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all',
+                      isActive
+                        ? 'bg-arcane/10 text-arcane-light'
+                        : 'text-dim hover:text-bright hover:bg-surface'
+                    )
+                  }
+                >
+                  <Globe className="w-4 h-4" />
+                  ENS Namespace
+                </NavLink>
+              )}
               <div className="pt-2 border-t border-border mt-2 flex flex-col gap-2">
                 <button
                   onClick={() => { navigate('/create'); setMobileOpen(false) }}

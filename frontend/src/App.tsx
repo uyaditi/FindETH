@@ -18,8 +18,9 @@ const DashboardPage      = lazy(() => import('@/pages/DashboardPage'))
 const BusinessPage       = lazy(() => import('@/pages/BusinessPage'))
 const ProfilePage        = lazy(() => import('@/pages/ProfilePage'))
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
-const LoginPage          = lazy(() => import('@/pages/LoginPage'))
-const BrandDashboardPage = lazy(() => import('@/pages/BrandDashboardPage'))
+const LoginPage            = lazy(() => import('@/pages/LoginPage'))
+const BrandDashboardPage   = lazy(() => import('@/pages/BrandDashboardPage'))
+const ENSNamespacePage     = lazy(() => import('@/pages/ENSNamespacePage'))
 
 // ── Route guard: requires brand role ─────────────────────────────────────────
 function RequireBrand({ children }: { children: React.ReactNode }) {
@@ -59,12 +60,20 @@ export default function App() {
           <Route path="/profile"           element={<ProfilePage />} />
           <Route path="/profile/:address"  element={<ProfilePage />} />
 
-          {/* Brand-only protected route */}
+          {/* Brand-only protected routes */}
           <Route
             path="/brand-dashboard"
             element={
               <RequireBrand>
                 <BrandDashboardPage />
+              </RequireBrand>
+            }
+          />
+          <Route
+            path="/ens-namespace"
+            element={
+              <RequireBrand>
+                <ENSNamespacePage />
               </RequireBrand>
             }
           />

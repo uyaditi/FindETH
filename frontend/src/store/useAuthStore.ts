@@ -13,7 +13,7 @@ export type UserRole = 'participant' | 'brand'
 interface AuthState {
   isAuthenticated: boolean
   role:            UserRole | null
-  username:        string | null
+  username:         string | null
   brandName:       string | null   // set on brand login
 
   login:  (username: string, password: string, role: UserRole, brandName?: string) => boolean
