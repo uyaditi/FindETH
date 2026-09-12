@@ -37,7 +37,9 @@ export function useCreateHunt() {
       setTxStatus({ state: 'confirming', message: 'Waiting for wallet confirmation...' })
 
       const clueHashes = params.clueAnswers.map(hashAnswer)
-      const prizeWei    = parseEther(params.prizeEth)
+      // AI-suggested prizes sometimes come back with a unit suffix (e.g. "0.05 ETH") —
+      // strip anything that isn't part of the decimal number before parsing.
+      const prizeWei    = parseEther(params.prizeEth.trim().replace(/[^0-9.]/g, ''))
 
       const hash = await writeContractAsync({
         address:      addresses.TREASURE_HUNT,

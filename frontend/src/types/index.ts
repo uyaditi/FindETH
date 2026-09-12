@@ -119,7 +119,8 @@ export interface ClueLocation {
 
 // ── AI Generation ─────────────────────────────────────────────────────────────
 export interface AIHuntGenerationInput {
-  businessUrl:    string
+  businessUrl?:    string
+  businessDescription?: string
   businessName:   string
   businessType:   string
   campaign:       string
@@ -128,6 +129,7 @@ export interface AIHuntGenerationInput {
   difficulty:     Difficulty
   huntType:       HuntType
   prize:          string     // ETH string e.g. "0.05"
+  numClues:       number     // 2-10
 }
 
 export interface AIGeneratedHunt {

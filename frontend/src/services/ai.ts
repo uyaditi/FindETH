@@ -180,14 +180,18 @@ async function generateDemo(
     },
   ]
 
+  // Demo only has a handful of hand-written templates — clamp to what's available.
+  const wantedClues = Math.min(Math.max(input.numClues || clues.length, 2), clues.length)
+  const trimmedClues = clues.slice(0, wantedClues)
+
   return {
     title:          `${name} — The ${campaign.split(' ').slice(-1)[0]} Secret`,
     description:    `${name} hid a secret across their ${campaign}. Follow the trail through content, stories, and products to discover the final word.`,
     story:          `${name} believes the best discoveries happen when you look closely. We've hidden clues throughout our ${campaign} — in product pages, brand stories, and campaign content. Find them all and unlock the secret.`,
     difficulty:     input.difficulty,
     huntType:       input.huntType,
-    clues,
-    finalAnswer:    'origin',
+    clues:          trimmedClues,
+    finalAnswer:    trimmedClues[trimmedClues.length - 1]?.answer || 'origin',
     suggestedPrize: input.prize || '0.05',
     confidence:     0.91,
     analysedPages:   24,
@@ -224,7 +228,7 @@ export async function generateHunt(
 
 export async function regenerateClue(
   clue: AIGeneratedClue,
-  context: { businessName: string; businessUrl: string }
+  context: { businessName: string; businessUrl?: string; businessDescription?: string }
 ): Promise<AIGeneratedClue> {
   if (AI_API_BASE) {
     const resp = await fetch(`${AI_API_BASE}/api/ai/regenerate-clue`, {

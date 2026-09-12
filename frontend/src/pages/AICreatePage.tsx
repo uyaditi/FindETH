@@ -29,6 +29,7 @@ function InputForm({ onGenerate }: { onGenerate: (input: AIHuntGenerationInput) 
   const { register, handleSubmit, watch } = useForm<AIHuntGenerationInput>({
     defaultValues: {
       businessUrl:    '',
+      businessDescription: '',
       businessName:   '',
       businessType:   'Fashion / Clothing',
       campaign:       '',
@@ -37,16 +38,21 @@ function InputForm({ onGenerate }: { onGenerate: (input: AIHuntGenerationInput) 
       difficulty:     Difficulty.Medium,
       huntType:       HuntType.MysteryDraw,
       prize:          '0.05',
+      numClues:       4,
     },
   })
 
   const [channels, setChannels] = useState<string[]>(['website', 'product-pages'])
+  const [sourceMode, setSourceMode] = useState<'url' | 'description'>('url')
 
   const toggleChannel = (id: string) =>
     setChannels(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id])
 
   const onSubmit = (data: AIHuntGenerationInput) => {
-    onGenerate({ ...data, channels })
+    const source = sourceMode === 'url'
+      ? { businessUrl: data.businessUrl, businessDescription: undefined }
+      : { businessUrl: undefined, businessDescription: data.businessDescription }
+    onGenerate({ ...data, ...source, channels })
   }
 
   return (
@@ -61,13 +67,57 @@ function InputForm({ onGenerate }: { onGenerate: (input: AIHuntGenerationInput) 
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
-          <label className="input-label">Business Website URL *</label>
-          <input
-            {...register('businessUrl', { required: true })}
-            type="url"
-            placeholder="https://yourstore.com"
-            className="input-field"
-          />
+          <div className="flex gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setSourceMode('url')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                sourceMode === 'url'
+                  ? 'border-gold/50 bg-gold/10 text-gold'
+                  : 'border-border text-dim hover:border-gold/20',
+              )}
+            >
+              Use website URL
+            </button>
+            <button
+              type="button"
+              onClick={() => setSourceMode('description')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                sourceMode === 'description'
+                  ? 'border-gold/50 bg-gold/10 text-gold'
+                  : 'border-border text-dim hover:border-gold/20',
+              )}
+            >
+              Describe my business instead
+            </button>
+          </div>
+          {sourceMode === 'url' ? (
+            <>
+              <label className="input-label">Business Website URL *</label>
+              <input
+                {...register('businessUrl', { required: sourceMode === 'url' })}
+                type="url"
+                placeholder="https://yourstore.com"
+                className="input-field"
+              />
+            </>
+          ) : (
+            <>
+              <label className="input-label">Describe Your Business *</label>
+              <textarea
+                {...register('businessDescription', { required: sourceMode === 'description' })}
+                rows={4}
+                placeholder="e.g. We sell handmade linen clothing focused on sustainable, natural fabrics. Our flagship product is a summer linen shirt made from organic flax..."
+                className="input-field resize-none"
+              />
+              <p className="text-muted text-xs mt-1">
+                No website to scrape? Describe your business, products, and story instead —
+                the AI will ground clues in what you write here.
+              </p>
+            </>
+          )}
         </div>
         <div>
           <label className="input-label">Business Name *</label>
@@ -119,7 +169,7 @@ function InputForm({ onGenerate }: { onGenerate: (input: AIHuntGenerationInput) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div>
           <label className="input-label">Difficulty</label>
           <select {...register('difficulty')} className="input-field">
@@ -135,6 +185,18 @@ function InputForm({ onGenerate }: { onGenerate: (input: AIHuntGenerationInput) 
         <div>
           <label className="input-label">Prize (ETH)</label>
           <input {...register('prize')} type="number" step="0.001" min="0.001" className="input-field" placeholder="0.05" />
+        </div>
+        <div>
+          <label className="input-label">Number of Clues</label>
+          <input
+            {...register('numClues', { valueAsNumber: true, min: 2, max: 10 })}
+            type="number"
+            step="1"
+            min="2"
+            max="10"
+            className="input-field"
+            placeholder="4"
+          />
         </div>
       </div>
 
@@ -466,6 +528,7 @@ export default function AICreatePage() {
       const regen = await regenerateClue(draft.clues[idx], {
         businessName: input.businessName,
         businessUrl:  input.businessUrl,
+        businessDescription: input.businessDescription,
       })
       handleClueUpdate(idx, regen)
     } catch { /* silent */ }

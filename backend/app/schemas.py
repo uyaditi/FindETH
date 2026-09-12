@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,7 +96,8 @@ class ClueLocation(BaseModel):
 
 
 class AIHuntGenerationInput(BaseModel):
-    businessUrl: str
+    businessUrl: Optional[str] = None
+    businessDescription: Optional[str] = None
     businessName: str
     businessType: str
     campaign: str
@@ -105,6 +106,13 @@ class AIHuntGenerationInput(BaseModel):
     difficulty: str
     huntType: int
     prize: str
+    numClues: int = Field(default=4, ge=2, le=10)
+
+    @model_validator(mode="after")
+    def _require_source(self):
+        if not (self.businessUrl or "").strip() and not (self.businessDescription or "").strip():
+            raise ValueError("Provide either businessUrl or businessDescription.")
+        return self
 
 
 class AIGeneratedClue(BaseModel):
@@ -135,7 +143,14 @@ class AIGeneratedHunt(BaseModel):
 
 class RegenerateClueContext(BaseModel):
     businessName: str
-    businessUrl: str
+    businessUrl: Optional[str] = None
+    businessDescription: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _require_source(self):
+        if not (self.businessUrl or "").strip() and not (self.businessDescription or "").strip():
+            raise ValueError("Provide either businessUrl or businessDescription.")
+        return self
 
 
 class RegenerateClueRequest(BaseModel):
