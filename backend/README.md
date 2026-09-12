@@ -5,7 +5,7 @@ FastAPI + SQLite (or Postgres, if you point `DATABASE_URL` at one) service that:
 1. Stores hunt **metadata** (title, description, story, clue flavour text — never
    plaintext answers) so the frontend can show what a hunt is about without ever
    exposing the on-chain answer hashes.
-2. Generates real, content-grounded hunt drafts with **Qwen 32B via Ollama**, replacing
+2. Generates real, content-grounded hunt drafts with **Gemini 2.5 Flash**, replacing
    the old hardcoded/template "AI" generator.
 
 ## Why there's no `answer` column
@@ -31,7 +31,7 @@ migration.
 ```bash
 cd backend
 cp .env.example .env
-# edit .env: set OLLAMA_BASE_URL, OLLAMA_MODEL, TREASURE_HUNT_ADDRESS, RPC_URL, etc.
+# edit .env: set GEMINI_API_KEY, TREASURE_HUNT_ADDRESS, RPC_URL, etc.
 ```
 
 ### 2. Install dependencies
@@ -67,11 +67,12 @@ curl http://localhost:8000/api/health
 # {"status":"ok","db":true}
 ```
 
-### 5. Try a real Qwen-backed generation call
+### 5. Try a real Gemini-backed generation call
 
-Requires the Ollama server in `OLLAMA_BASE_URL` to be reachable and requires
-`businessUrl` to be a real, publicly reachable URL. The call fetches the site
-live and grounds the hunt in its actual text — it does not fabricate content:
+Requires `GEMINI_API_KEY` to be set in `.env` (get one at
+https://aistudio.google.com/apikey) and requires `businessUrl` to be a real,
+publicly reachable URL (this call fetches it live and grounds the hunt in its
+actual text — it does not fabricate content):
 
 ```bash
 curl -X POST http://localhost:8000/api/ai/generate \

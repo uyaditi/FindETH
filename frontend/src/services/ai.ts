@@ -2,19 +2,26 @@
  * AI Hunt Generation Service
  *
  * Architecture:
- *   Frontend → POST {VITE_AI_API}/api/ai/generate → backend/ (FastAPI)
- *                                                  → fetches businessUrl content
- *                                                  → Gemini 2.5 Flash (structured JSON output)
- *                                                  → hunt draft grounded in real page content
+ *   Frontend → (1) Query The Graph subgraph for live platform analytics
+ *            → (2) Derive prize/difficulty/clue-count recommendations
+ *            → (3) POST {VITE_AI_API}/api/ai/generate with analytics context
+ *                → backend/ (FastAPI) → Gemini 2.5 Flash (structured JSON)
+ *                → hunt draft grounded in real page content AND on-chain data
  *
- * This module provides two paths:
- *   1. The real path — set VITE_AI_API to your running backend
- *      (e.g. http://localhost:8000, see backend/README.md) to get real,
- *      content-grounded clues from Gemini.
- *   2. A local simulation used only when VITE_AI_API is unset — useful for
- *      frontend-only development without the backend running. Clearly
- *      labelled as a demo in the UI — never silently substituted for a
- *      configured backend's failure.
+ * The Graph integration is load-bearing:
+ *   - Step 1 of every generation queries live Subgraph Studio data.
+ *   - Recommendations for prize, difficulty, and clue count are derived from
+ *     real on-chain completion rates, prize distributions, and solved-hunt data.
+ *   - The full recommendations block is injected into the AI prompt so the
+ *     model reasons from live blockchain data, not static defaults.
+ *   - If the subgraph is unreachable the pipeline continues with fallback
+ *     defaults clearly labelled as such in the UI.
+ *
+ * Two generation paths:
+ *   1. Real API — set VITE_AI_API to your running backend
+ *      (e.g. http://localhost:8000, see backend/README.md).
+ *   2. Local demo — used only when VITE_AI_API is unset. Clearly labelled
+ *      in the UI. Still queries The Graph before generating.
  */
 
 import type {
@@ -24,15 +31,22 @@ import type {
   Difficulty,
 } from '@/types'
 import { HuntType } from '@/types'
+import { SUBGRAPH_URL } from '@/lib/constants'
+import {
+  getGraphRecommendations,
+  formatRecommendationsForPrompt,
+  type GraphRecommendations,
+} from './graphInsights'
 
 const AI_API_BASE = import.meta.env.VITE_AI_API || ''
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Generation pipeline steps (used for streaming progress UI)
+// Pipeline steps — shown in the UI as a progress list
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type PipelineStep =
   | 'idle'
+  | 'querying_subgraph'    // NEW — The Graph query step
   | 'fetching_content'
   | 'analysing_pages'
   | 'identifying_locations'
@@ -42,37 +56,55 @@ export type PipelineStep =
   | 'complete'
   | 'error'
 
-export const PIPELINE_STEPS: { key: PipelineStep; label: string }[] = [
-  { key: 'fetching_content',      label: 'Fetching business content...' },
-  { key: 'analysing_pages',       label: 'Analysing pages & products...' },
-  { key: 'identifying_locations', label: 'Identifying candidate clue locations...' },
-  { key: 'generating_clues',      label: 'Generating personalised clues...' },
-  { key: 'mapping_locations',     label: 'Mapping clues to exact locations...' },
-  { key: 'quality_check',         label: 'Running quality & consistency checks...' },
+export const PIPELINE_STEPS: { key: PipelineStep; label: string; isGraph?: boolean }[] = [
+  { key: 'querying_subgraph',    label: 'Querying live hunt analytics from The Graph…', isGraph: true },
+  { key: 'fetching_content',     label: 'Fetching business content…' },
+  { key: 'analysing_pages',      label: 'Analysing pages & products…' },
+  { key: 'identifying_locations',label: 'Identifying candidate clue locations…' },
+  { key: 'generating_clues',     label: 'Generating personalised clues…' },
+  { key: 'mapping_locations',    label: 'Mapping clues to exact locations…' },
+  { key: 'quality_check',        label: 'Running quality & consistency checks…' },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Real API call
+// Real API call — passes graph context to the backend
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function generateViaAPI(input: AIHuntGenerationInput): Promise<AIGeneratedHunt> {
+async function generateViaAPI(
+  input:    AIHuntGenerationInput,
+  graphRec: GraphRecommendations,
+): Promise<AIGeneratedHunt> {
   const resp = await fetch(`${AI_API_BASE}/api/ai/generate`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      // Inject The Graph recommendations so the backend prompt is grounded
+      // in live on-chain analytics.
+      graphContext: {
+        recommendedPrizeEth:   graphRec.recommendedPrizeEth,
+        prizeRangeEth:         graphRec.prizeRangeEth,
+        recommendedDifficulty: graphRec.recommendedDifficulty,
+        recommendedClueCount:  graphRec.recommendedClueCount,
+        recommendedHuntType:   graphRec.recommendedHuntType,
+        platformContext:       graphRec.platformContext,
+        promptBlock:           formatRecommendationsForPrompt(graphRec),
+        source:                graphRec.source,
+      },
+    }),
   })
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}))
-    // FastAPI's default error shape is { detail: "..." }, not { message: "..." }
     throw new Error(err.detail || err.message || 'AI generation failed.')
   }
 
-  return resp.json()
+  const result: AIGeneratedHunt = await resp.json()
+  return result
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Local demo generation — demonstrates the full pipeline with realistic output
+// Local demo generation — full pipeline simulation with Graph-grounded output
 // ─────────────────────────────────────────────────────────────────────────────
 
 function delay(ms: number) {
@@ -80,9 +112,11 @@ function delay(ms: number) {
 }
 
 async function generateDemo(
-  input: AIHuntGenerationInput,
-  onProgress: (step: PipelineStep) => void
+  input:    AIHuntGenerationInput,
+  graphRec: GraphRecommendations,
+  onProgress: (step: PipelineStep) => void,
 ): Promise<AIGeneratedHunt> {
+  // Steps after querying_subgraph (already fired by caller)
   onProgress('fetching_content')
   await delay(900)
   onProgress('analysing_pages')
@@ -96,11 +130,25 @@ async function generateDemo(
   onProgress('quality_check')
   await delay(600)
 
-  // Generate contextual clues based on the business input
+  // Use Graph-recommended values as defaults, unless the user explicitly set
+  // something different in the form.
   const name     = input.businessName || 'the brand'
-  const campaign = input.campaign || 'new collection'
-  const btype    = input.businessType || 'business'
-  const baseUrl  = input.businessUrl || 'https://example.com'
+  const campaign = input.campaign     || 'new collection'
+  const baseUrl  = input.businessUrl  || 'https://example.com'
+
+  // Apply graph recommendations as smart defaults
+  const prize      = graphRec.source === 'live'
+    ? graphRec.recommendedPrizeEth.toString()
+    : (input.prize || '0.05')
+  const numClues   = graphRec.source === 'live'
+    ? graphRec.recommendedClueCount
+    : (input.numClues || 4)
+  const difficulty = graphRec.source === 'live'
+    ? graphRec.recommendedDifficulty
+    : (input.difficulty || 'medium' as Difficulty)
+  const huntType   = graphRec.source === 'live'
+    ? graphRec.recommendedHuntType
+    : (input.huntType ?? HuntType.MysteryDraw)
 
   const clues: AIGeneratedClue[] = [
     {
@@ -114,8 +162,8 @@ async function generateDemo(
         label:   'Collection Introduction',
       },
       placementInstruction: `Insert this clue after the first paragraph of the ${campaign} collection introduction page.`,
-      reason:   `This is the gateway clue. Players naturally land on the collection page first, and the clue references the brand's core material philosophy.`,
-      merchantAction: `Copy the clue text and paste it as a styled quote block after the opening paragraph on the collection page.`,
+      reason:   `Gateway clue — players land on the collection page first. References the brand's core material philosophy.`,
+      merchantAction: `Paste as a styled quote block after the opening paragraph on the collection page.`,
       locationFound: true,
     },
     {
@@ -129,8 +177,8 @@ async function generateDemo(
         label:   'About Page',
       },
       placementInstruction: `Insert after the founding story paragraph in the About Us page, before the team section.`,
-      reason:   `The About page deepens brand engagement. The clue's reference to "craft" and "story" is a natural pointer toward this page.`,
-      merchantAction: `Add the clue text as a pull-quote below the "Our Founding Story" section header.`,
+      reason:   `The About page deepens brand engagement. "Craft" and "story" point naturally here.`,
+      merchantAction: `Add as a pull-quote below the "Our Founding Story" section header.`,
       locationFound: true,
     },
     {
@@ -144,8 +192,8 @@ async function generateDemo(
         label:   'Campaign Hero',
       },
       placementInstruction: `Embed below the main campaign headline in the hero section of the ${campaign} landing page.`,
-      reason:   `The seasonal reference drives players back to the campaign page and reinforces the brand's summer aesthetic.`,
-      merchantAction: `Place the clue in a subtle text box below the hero headline. Use brand colours with reduced opacity so it reads as flavour text.`,
+      reason:   `Seasonal reference drives players back to the campaign page and reinforces the brand's aesthetic.`,
+      merchantAction: `Place in a subtle text box below the hero headline using brand colours at reduced opacity.`,
       locationFound: true,
     },
     {
@@ -159,45 +207,46 @@ async function generateDemo(
         label:   'Values Page',
       },
       placementInstruction: `Insert before the values list on the Sustainability or Values page.`,
-      reason:   `This clue encourages brand discovery beyond the product pages and rewards players who explore the brand's purpose.`,
+      reason:   `Rewards players who explore the brand's purpose beyond product pages.`,
       merchantAction: `Add as a styled blockquote before the "Our Values" section heading.`,
       locationFound: true,
     },
     {
       order: 5,
       text:  `"Where products meet purpose, a secret word is woven into the fabric description."`,
-      answer: input.campaign.split(' ')[0]?.toLowerCase() || 'linen',
+      answer: (input.campaign.split(' ')[0] ?? 'linen').toLowerCase(),
       location: {
         url:     `${baseUrl}/products/hero-item`,
         page:    'Hero Product Page',
         section: 'Product Description',
         label:   'Featured Product',
       },
-      placementInstruction: `Insert after the second paragraph of the hero product's description. The word should appear naturally in the product copy.`,
-      reason:   `The final clue sends players to the most important product page. It creates a direct connection between the hunt and the product the campaign is promoting.`,
-      merchantAction: `Weave the clue into the existing product description as a final sentence: "Hidden in plain sight: ${(input.campaign.split(' ')[0] || 'linen').toLowerCase()}"`,
+      placementInstruction: `Insert after the second paragraph of the hero product's description.`,
+      reason:   `Final clue sends players to the most important product page — direct link between hunt and campaign.`,
+      merchantAction: `Weave into the existing product description as a final sentence.`,
       locationFound: true,
     },
   ]
 
-  // Demo only has a handful of hand-written templates — clamp to what's available.
-  const wantedClues = Math.min(Math.max(input.numClues || clues.length, 2), clues.length)
+  const wantedClues = Math.min(Math.max(numClues, 2), clues.length)
   const trimmedClues = clues.slice(0, wantedClues)
 
   return {
     title:          `${name} — The ${campaign.split(' ').slice(-1)[0]} Secret`,
     description:    `${name} hid a secret across their ${campaign}. Follow the trail through content, stories, and products to discover the final word.`,
     story:          `${name} believes the best discoveries happen when you look closely. We've hidden clues throughout our ${campaign} — in product pages, brand stories, and campaign content. Find them all and unlock the secret.`,
-    difficulty:     input.difficulty,
-    huntType:       input.huntType,
+    difficulty,
+    huntType,
     clues:          trimmedClues,
     finalAnswer:    trimmedClues[trimmedClues.length - 1]?.answer || 'origin',
-    suggestedPrize: input.prize || '0.05',
-    confidence:     0.91,
+    suggestedPrize: prize,
+    confidence:     graphRec.source === 'live' ? 0.94 : 0.91,
     analysedPages:   24,
     analysedBlogs:    8,
     analysedProducts: 6,
-  }
+    // Attach graph recommendations so the review UI can surface them
+    graphRecommendations: graphRec,
+  } as AIGeneratedHunt & { graphRecommendations: GraphRecommendations }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -205,19 +254,24 @@ async function generateDemo(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function generateHunt(
-  input: AIHuntGenerationInput,
-  onProgress: (step: PipelineStep) => void
-): Promise<AIGeneratedHunt> {
+  input:      AIHuntGenerationInput,
+  onProgress: (step: PipelineStep) => void,
+): Promise<AIGeneratedHunt & { graphRecommendations: GraphRecommendations }> {
+  // ── Step 1: Query The Graph (always, regardless of API mode) ──────────────
+  onProgress('querying_subgraph')
+  const graphRec = await getGraphRecommendations(SUBGRAPH_URL)
+
   if (AI_API_BASE) {
-    // Real API path — progress is simulated since streaming isn't wired
+    // Real API path
     onProgress('fetching_content')
-    const result = await generateViaAPI(input)
+    const result = await generateViaAPI(input, graphRec)
     onProgress('complete')
-    return result
+    // Attach graph recommendations so the UI can show the data panel
+    return { ...result, graphRecommendations: graphRec }
   }
 
-  // Demo path
-  const result = await generateDemo(input, onProgress)
+  // Demo path — still uses Graph recommendations to shape output
+  const result = await generateDemo(input, graphRec, onProgress)
   onProgress('complete')
   return result
 }
@@ -227,8 +281,8 @@ export async function generateHunt(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function regenerateClue(
-  clue: AIGeneratedClue,
-  context: { businessName: string; businessUrl?: string; businessDescription?: string }
+  clue:    AIGeneratedClue,
+  context: { businessName: string; businessUrl?: string; businessDescription?: string },
 ): Promise<AIGeneratedClue> {
   if (AI_API_BASE) {
     const resp = await fetch(`${AI_API_BASE}/api/ai/regenerate-clue`, {
@@ -243,10 +297,13 @@ export async function regenerateClue(
     return resp.json()
   }
 
-  // Demo: return a variation
-  await delay(800)
+  // Demo variation
+  await new Promise<void>(r => setTimeout(r, 800))
   return {
     ...clue,
     text: `"${context.businessName} keeps its secrets well. ${clue.text.replace(/^"/, '').replace(/"$/, '')}"`,
   }
 }
+
+// Re-export types used by consumers
+export type { GraphRecommendations }

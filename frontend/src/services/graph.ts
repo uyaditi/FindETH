@@ -3,7 +3,14 @@ import { SUBGRAPH_URL } from '@/lib/constants'
 import { Difficulty, HuntStatus, HuntType, type Hunt, type LeaderboardEntry, type HuntAnalytics } from '@/types'
 import { getAllHuntMetadata, getHuntMetadata, type HuntMetadata } from '@/lib/huntMetadata'
 
-const client = new GraphQLClient(SUBGRAPH_URL)
+// Build headers: include The Graph API key when provided (required for
+// Subgraph Studio decentralised queries; ignored for hosted-service/local).
+function buildHeaders(): Record<string, string> {
+  const key = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GRAPH_API_KEY) || ''
+  return key ? { Authorization: `Bearer ${key}` } : {}
+}
+
+const client = new GraphQLClient(SUBGRAPH_URL, { headers: buildHeaders() })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Metadata merge — real hunt titles/descriptions/clues come from the backend
@@ -307,3 +314,316 @@ const MOCK_LEADERBOARD: LeaderboardEntry[] = [
   { rank: 7, address: '0x976EA74026E726554dB657fA54763abd0C3a0aa9', ensName: undefined,          wins: 2,  huntsSolved: 9,  totalEarned: 100000000000000000n,  nftsOwned: 2  },
   { rank: 8, address: '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955', ensName: 'seeker.eth',       wins: 2,  huntsSolved: 8,  totalEarned: 80000000000000000n,   nftsOwned: 2  },
 ]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform analytics — used by the AI generation pipeline to ground prize,
+// difficulty, and clue-count recommendations in live on-chain data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLATFORM_ANALYTICS_QUERY = gql`
+  query GetPlatformAnalytics($first: Int!) {
+    globalStats(id: "global") {
+      id
+      totalHunts
+      totalParticipants
+      totalPrizeEth
+      totalNFTsMinted
+      totalWinners
+    }
+    # Sample recent hunts for distribution analysis
+    recentHunts: hunts(
+      first: $first
+      orderBy: createdAt
+      orderDirection: desc
+    ) {
+      id
+      prize
+      participantCount
+      correctCount
+      clueCount
+      huntType
+      status
+      difficulty
+      createdAt
+    }
+    # Solved hunts only — for completion-rate & prize benchmarks
+    solvedHunts: hunts(
+      first: $first
+      orderBy: createdAt
+      orderDirection: desc
+      where: { status: Solved }
+    ) {
+      id
+      prize
+      participantCount
+      correctCount
+      clueCount
+      huntType
+      difficulty
+    }
+  }
+`
+
+const CATEGORY_INSIGHTS_QUERY = gql`
+  query GetCategoryInsights($first: Int!) {
+    # Race hunts — performance metrics
+    raceHunts: hunts(
+      first: $first
+      orderBy: participantCount
+      orderDirection: desc
+      where: { huntType: Race }
+    ) {
+      id
+      prize
+      participantCount
+      correctCount
+      clueCount
+      status
+      difficulty
+    }
+    # MysteryDraw hunts — performance metrics
+    drawHunts: hunts(
+      first: $first
+      orderBy: participantCount
+      orderDirection: desc
+      where: { huntType: MysteryDraw }
+    ) {
+      id
+      prize
+      participantCount
+      correctCount
+      clueCount
+      status
+      difficulty
+    }
+    # Top-prize hunts — what prize sizes attract most players
+    topPrizeHunts: hunts(
+      first: 10
+      orderBy: prize
+      orderDirection: desc
+    ) {
+      id
+      prize
+      participantCount
+      correctCount
+    }
+  }
+`
+
+// ── Domain types ──────────────────────────────────────────────────────────────
+
+export interface RawHuntSample {
+  id:               string
+  prize:            string
+  participantCount: string
+  correctCount:     string
+  clueCount:        string
+  huntType:         string   // 'Race' | 'MysteryDraw'
+  status:           string
+  difficulty:       string | null
+  createdAt?:       string
+}
+
+export interface PlatformAnalytics {
+  // Global totals from the GlobalStats entity
+  totalHunts:        number
+  totalParticipants: number
+  totalPrizeEthWei:  bigint
+  totalNFTsMinted:   number
+  totalWinners:      number
+
+  // Derived aggregates across recent hunts (last N)
+  sampleSize:              number
+  avgCompletionRate:       number    // 0–100
+  medianPrizeEth:          number
+  avgPrizeEth:             number
+  avgClueCount:            number
+  difficultyDistribution:  Record<string, number>   // difficulty → count
+  huntTypeDistribution:    Record<string, number>   // huntType → count
+  completionByDifficulty:  Record<string, number>   // difficulty → avg completion%
+
+  // What difficulty level has the highest completion rate
+  bestCompletionDifficulty: string | null
+  // Prize range of top-performing hunts (highest participant count)
+  topHuntPrizeRange:  { min: number; max: number }
+
+  // Raw sample for further processing
+  solvedHunts: RawHuntSample[]
+}
+
+export interface CategoryInsights {
+  raceHunts:     RawHuntSample[]
+  drawHunts:     RawHuntSample[]
+  topPrizeHunts: RawHuntSample[]
+
+  // Computed
+  raceAvgCompletion: number
+  drawAvgCompletion: number
+  recommendedType:   'Race' | 'MysteryDraw'  // whichever has better completion
+
+  // Optimal clue count (mode of clueCount in solved hunts)
+  optimalClueCount: number
+
+  // Prize sweet spot — median prize of top-10 by participation
+  prizeSweet: number  // ETH
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function weiToEth(wei: string | bigint): number {
+  return Number(BigInt(wei)) / 1e18
+}
+
+function completionRate(h: RawHuntSample): number {
+  const p = Number(h.participantCount)
+  if (p === 0) return 0
+  return (Number(h.correctCount) / p) * 100
+}
+
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0
+  const sorted = [...nums].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+function mode(nums: number[]): number {
+  if (nums.length === 0) return 4
+  const freq: Record<number, number> = {}
+  for (const n of nums) freq[n] = (freq[n] ?? 0) + 1
+  return Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0])
+}
+
+// ── Public fetch functions ─────────────────────────────────────────────────────
+
+export async function fetchPlatformAnalytics(sampleSize = 50): Promise<PlatformAnalytics | null> {
+  try {
+    const data = await client.request<{
+      globalStats: {
+        id: string
+        totalHunts: string
+        totalParticipants: string
+        totalPrizeEth: string
+        totalNFTsMinted: string
+        totalWinners: string
+      } | null
+      recentHunts:  RawHuntSample[]
+      solvedHunts:  RawHuntSample[]
+    }>(PLATFORM_ANALYTICS_QUERY, { first: sampleSize })
+
+    const gs = data.globalStats
+    const recent = data.recentHunts ?? []
+    const solved = data.solvedHunts ?? []
+
+    // Difficulty distribution
+    const diffDist: Record<string, number> = {}
+    const diffCompletion: Record<string, number[]> = {}
+    for (const h of recent) {
+      const d = h.difficulty ?? 'unknown'
+      diffDist[d] = (diffDist[d] ?? 0) + 1
+      if (!diffCompletion[d]) diffCompletion[d] = []
+      diffCompletion[d].push(completionRate(h))
+    }
+    const completionByDiff: Record<string, number> = {}
+    for (const [d, rates] of Object.entries(diffCompletion)) {
+      completionByDiff[d] = rates.reduce((a, b) => a + b, 0) / rates.length
+    }
+
+    // Hunt type distribution
+    const typeDist: Record<string, number> = {}
+    for (const h of recent) {
+      typeDist[h.huntType] = (typeDist[h.huntType] ?? 0) + 1
+    }
+
+    // Prize stats across recent hunts
+    const priceEths = recent.map(h => weiToEth(h.prize))
+    const avgPrize  = priceEths.length > 0 ? priceEths.reduce((a, b) => a + b, 0) / priceEths.length : 0
+
+    // Avg completion
+    const completions = recent.map(completionRate)
+    const avgCompletion = completions.length > 0
+      ? completions.reduce((a, b) => a + b, 0) / completions.length
+      : 0
+
+    // Best difficulty by completion rate
+    const bestDiff = Object.entries(completionByDiff).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+
+    // Top-participating hunts (top 10 by participantCount)
+    const topByParticipation = [...recent]
+      .sort((a, b) => Number(b.participantCount) - Number(a.participantCount))
+      .slice(0, 10)
+    const topPrices = topByParticipation.map(h => weiToEth(h.prize))
+    const topPrizeRange = topPrices.length > 0
+      ? { min: Math.min(...topPrices), max: Math.max(...topPrices) }
+      : { min: 0.05, max: 0.5 }
+
+    return {
+      totalHunts:        gs ? Number(gs.totalHunts) : recent.length,
+      totalParticipants: gs ? Number(gs.totalParticipants) : 0,
+      totalPrizeEthWei:  gs ? BigInt(gs.totalPrizeEth) : 0n,
+      totalNFTsMinted:   gs ? Number(gs.totalNFTsMinted) : 0,
+      totalWinners:      gs ? Number(gs.totalWinners) : 0,
+
+      sampleSize:              recent.length,
+      avgCompletionRate:       Math.round(avgCompletion),
+      medianPrizeEth:          median(priceEths),
+      avgPrizeEth:             avgPrize,
+      avgClueCount:            recent.length > 0
+        ? recent.reduce((s, h) => s + Number(h.clueCount), 0) / recent.length
+        : 4,
+      difficultyDistribution:  diffDist,
+      huntTypeDistribution:    typeDist,
+      completionByDifficulty:  completionByDiff,
+      bestCompletionDifficulty: bestDiff,
+      topHuntPrizeRange:        topPrizeRange,
+      solvedHunts:              solved,
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function fetchCategoryInsights(sampleSize = 30): Promise<CategoryInsights | null> {
+  try {
+    const data = await client.request<{
+      raceHunts:     RawHuntSample[]
+      drawHunts:     RawHuntSample[]
+      topPrizeHunts: RawHuntSample[]
+    }>(CATEGORY_INSIGHTS_QUERY, { first: sampleSize })
+
+    const race = data.raceHunts ?? []
+    const draw = data.drawHunts ?? []
+    const top  = data.topPrizeHunts ?? []
+
+    const avg = (arr: RawHuntSample[]) =>
+      arr.length === 0 ? 0 : arr.map(completionRate).reduce((a, b) => a + b, 0) / arr.length
+
+    const raceAvg = avg(race)
+    const drawAvg = avg(draw)
+
+    // Optimal clue count: mode across all solved (status = Solved) hunts
+    const allHunts = [...race, ...draw]
+    const solvedClueCounts = allHunts
+      .filter(h => h.status === 'Solved')
+      .map(h => Number(h.clueCount))
+      .filter(n => n > 0)
+    const optClues = mode(solvedClueCounts.length > 0 ? solvedClueCounts : [4])
+
+    // Prize sweet spot: median prize of top-10 by participation
+    const topPrices = top.map(h => weiToEth(h.prize))
+    const prizeSweet = median(topPrices.length > 0 ? topPrices : [0.05])
+
+    return {
+      raceHunts:         race,
+      drawHunts:         draw,
+      topPrizeHunts:     top,
+      raceAvgCompletion: raceAvg,
+      drawAvgCompletion: drawAvg,
+      recommendedType:   raceAvg >= drawAvg ? 'Race' : 'MysteryDraw',
+      optimalClueCount:  optClues,
+      prizeSweet,
+    }
+  } catch {
+    return null
+  }
+}

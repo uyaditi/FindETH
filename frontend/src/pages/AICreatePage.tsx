@@ -6,9 +6,10 @@ import { useForm } from 'react-hook-form'
 import {
   Sparkles, ChevronRight, CheckCircle, RefreshCw, Edit3, Trash2,
   MapPin, Info, AlertCircle, Loader2, RotateCcw, Eye, EyeOff,
+  Database, TrendingUp, BarChart3, ExternalLink, ShieldCheck,
 } from 'lucide-react'
 
-import { generateHunt, regenerateClue, PIPELINE_STEPS, type PipelineStep } from '@/services/ai'
+import { generateHunt, regenerateClue, PIPELINE_STEPS, type PipelineStep, type GraphRecommendations } from '@/services/ai'
 import { useCreateHunt } from '@/hooks/useHuntActions'
 import TxButton from '@/components/ui/TxButton'
 import TxStatusBanner from '@/components/ui/TxStatusBanner'
@@ -16,7 +17,7 @@ import { saveHuntMetadata, metadataPublishMessage } from '@/lib/huntMetadata'
 import { cn, copyToClipboard } from '@/lib/utils'
 import { hashAnswer, spoilerSafe } from '@/lib/answerHash'
 import {
-  DIFFICULTIES, HUNT_TYPES, BUSINESS_TYPES, CONTENT_CHANNELS,
+  DIFFICULTIES, HUNT_TYPES, BUSINESS_TYPES, CONTENT_CHANNELS, SUBGRAPH_URL,
 } from '@/lib/constants'
 import {
   Difficulty, HuntType,
@@ -229,31 +230,175 @@ function GeneratingView({ currentStep }: { currentStep: PipelineStep }) {
         <p className="text-dim text-sm">AI is analysing your business content.</p>
       </div>
       <div className="w-full max-w-sm space-y-2">
-        {PIPELINE_STEPS.map(({ key, label }) => {
-          const idx = PIPELINE_STEPS.findIndex(s => s.key === currentStep)
+        {PIPELINE_STEPS.map(({ key, label, isGraph }) => {
+          const idx   = PIPELINE_STEPS.findIndex(s => s.key === currentStep)
           const myIdx = PIPELINE_STEPS.findIndex(s => s.key === key)
-          const done    = myIdx < idx
-          const active  = key === currentStep
+          const done   = myIdx < idx
+          const active = key === currentStep
 
           return (
             <motion.div
               key={key}
               className={cn(
                 'flex items-center gap-3 p-3 rounded-xl text-sm transition-all',
-                active  && 'bg-arcane/10 text-arcane-light',
-                done    && 'text-success',
+                active && isGraph && 'bg-info/10 text-info border border-info/20',
+                active && !isGraph && 'bg-arcane/10 text-arcane-light',
+                done   && isGraph && 'text-info',
+                done   && !isGraph && 'text-success',
                 !active && !done && 'text-muted',
               )}
             >
-              {done   && <CheckCircle className="w-4 h-4 shrink-0" />}
-              {active && <Loader2 className="w-4 h-4 shrink-0 animate-spin" />}
+              {done && isGraph  && <Database className="w-4 h-4 shrink-0" />}
+              {done && !isGraph && <CheckCircle className="w-4 h-4 shrink-0" />}
+              {active           && <Loader2 className="w-4 h-4 shrink-0 animate-spin" />}
               {!done && !active && <div className="w-4 h-4 rounded-full border border-border shrink-0" />}
-              {label}
+              <span>{label}</span>
+              {isGraph && (active || done) && (
+                <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/20 shrink-0">
+                  The Graph
+                </span>
+              )}
             </motion.div>
           )
         })}
       </div>
     </div>
+  )
+}
+
+// ─── The Graph data panel ─────────────────────────────────────────────────────
+// Shown in the review step to surface the live on-chain analytics that
+// informed the AI's prize, difficulty, and clue-count recommendations.
+
+function GraphDataPanel({ rec }: { rec: GraphRecommendations }) {
+  const ctx   = rec.platformContext
+  const isLive = rec.source === 'live'
+
+  // Shorten the subgraph URL for display
+  const displayUrl = ctx.dataSource.length > 60
+    ? ctx.dataSource.slice(0, 57) + '…'
+    : ctx.dataSource
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="card border-info/20 bg-info/5 overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-info/10">
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-info" />
+          <span className="text-info text-sm font-semibold">The Graph — Live Analytics</span>
+          <span className={cn(
+            'text-[10px] font-medium px-1.5 py-0.5 rounded border',
+            isLive
+              ? 'bg-success/10 text-success border-success/20'
+              : 'bg-warning/10 text-warning border-warning/20'
+          )}>
+            {isLive ? '● Live data' : '○ Fallback'}
+          </span>
+        </div>
+        <a
+          href={ctx.dataSource}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted hover:text-info text-xs flex items-center gap-1 transition-colors"
+          title={ctx.dataSource}
+        >
+          Subgraph Studio <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
+      <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {/* Platform stats */}
+        <div>
+          <p className="text-dim text-xs font-medium uppercase tracking-wider mb-3">
+            Platform Data ({ctx.sampleSize} hunts sampled)
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'Total Hunts',    value: ctx.totalHunts.toLocaleString() },
+              { label: 'Total Players',  value: ctx.totalParticipants.toLocaleString() },
+              { label: 'ETH Distributed',value: `${ctx.totalPrizeEth.toFixed(2)} ETH` },
+              { label: 'Avg Completion', value: `${ctx.avgCompletionRate}%` },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-surface/60 rounded-xl p-2.5">
+                <p className="text-muted text-[10px] mb-0.5">{label}</p>
+                <p className="text-bright text-sm font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recommendations */}
+        <div>
+          <p className="text-dim text-xs font-medium uppercase tracking-wider mb-3">
+            AI Recommendations (from live data)
+          </p>
+          <div className="space-y-2">
+            {[
+              {
+                icon: TrendingUp,
+                label: 'Prize',
+                value: `${rec.recommendedPrizeEth} ETH`,
+                sub:   `Range: ${rec.prizeRangeEth.min}–${rec.prizeRangeEth.max} ETH`,
+                color: 'text-gold',
+              },
+              {
+                icon: BarChart3,
+                label: 'Difficulty',
+                value: rec.recommendedDifficulty.charAt(0).toUpperCase() + rec.recommendedDifficulty.slice(1),
+                sub:   'Best completion rate on-chain',
+                color: 'text-arcane-light',
+              },
+              {
+                icon: ShieldCheck,
+                label: 'Clue Count',
+                value: `${rec.recommendedClueCount} clues`,
+                sub:   'Modal count in solved hunts',
+                color: 'text-success',
+              },
+            ].map(({ icon: Icon, label, value, sub, color }) => (
+              <div key={label} className="flex items-center gap-3 bg-surface/60 rounded-xl px-3 py-2">
+                <Icon className={cn('w-3.5 h-3.5 shrink-0', color)} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-muted text-[10px]">{label}</p>
+                  <p className={cn('text-sm font-semibold leading-none', color)}>{value}</p>
+                </div>
+                <p className="text-muted text-[10px] text-right hidden sm:block">{sub}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Rationales */}
+      <div className="border-t border-info/10 px-5 py-3">
+        <details className="group">
+          <summary className="text-muted text-xs cursor-pointer hover:text-dim transition-colors select-none flex items-center gap-1.5">
+            <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+            View recommendation rationales from The Graph
+          </summary>
+          <div className="mt-3 space-y-2 text-xs">
+            {[
+              { label: 'Prize',       text: rec.prizeRationale },
+              { label: 'Difficulty',  text: rec.difficultyRationale },
+              { label: 'Clue count',  text: rec.clueCountRationale },
+              { label: 'Hunt type',   text: rec.huntTypeRationale },
+            ].map(({ label, text }) => (
+              <div key={label} className="flex gap-2">
+                <span className="text-info font-medium shrink-0 w-20">{label}:</span>
+                <span className="text-dim leading-relaxed">{text}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-muted text-[10px] mt-2 font-mono break-all">
+            Source: {displayUrl} · Queried {new Date(ctx.queriedAt).toLocaleTimeString()}
+          </p>
+        </details>
+      </div>
+    </motion.div>
   )
 }
 
@@ -270,7 +415,7 @@ function GeneratedHuntReview({
   txStatus,
   isPending,
 }: {
-  draft:             AIGeneratedHunt
+  draft:             AIGeneratedHunt & { graphRecommendations?: GraphRecommendations }
   input:             AIHuntGenerationInput
   onClueUpdate:      (idx: number, updates: Partial<AIGeneratedClue>) => void
   onClueRegenerate:  (idx: number) => void
@@ -319,6 +464,11 @@ function GeneratedHuntReview({
           <span className="badge badge-green">✓ All locations found</span>
         </div>
       </div>
+
+      {/* The Graph data panel */}
+      {draft.graphRecommendations && (
+        <GraphDataPanel rec={draft.graphRecommendations} />
+      )}
 
       {/* Clues */}
       <div>
@@ -493,7 +643,7 @@ export default function AICreatePage() {
 
   const [phase, setPhase]       = useState<'input' | 'generating' | 'review'>('input')
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>('idle')
-  const [draft, setDraft]       = useState<AIGeneratedHunt | null>(null)
+  const [draft, setDraft]       = useState<(AIGeneratedHunt & { graphRecommendations?: GraphRecommendations }) | null>(null)
   const [input, setInput]       = useState<AIHuntGenerationInput | null>(null)
   const [error, setError]       = useState<string | null>(null)
   const [published, setPublished] = useState(false)
