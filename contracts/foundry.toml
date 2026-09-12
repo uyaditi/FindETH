@@ -12,6 +12,7 @@ remappings = [
   "@openzeppelin/=lib/openzeppelin-contracts/",
   "@chainlink/contracts/=lib/chainlink-brownie-contracts/contracts/",
 ]
+fs_permissions = [{ access = "read-write", path = "./deployment.json" }]
 
 [profile.default.fuzz]
 runs = 256

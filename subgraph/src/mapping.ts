@@ -2,7 +2,6 @@ import { BigInt, Bytes, Address } from "@graphprotocol/graph-ts"
 import {
   HuntCreated,
   HuntParticipated,
-  ClueSolved,
   CorrectSolution,
   IncorrectSolution,
   HuntSolved,
@@ -14,7 +13,7 @@ import {
   HuntCancelled,
 } from "../generated/TreasureHunt/TreasureHunt"
 import {
-  Hunt, Player, Solution, ClueSolve, RandomnessRequest,
+  Hunt, Player, Solution, RandomnessRequest,
   Winner, PrizeClaim, NFT, GlobalStats,
 } from "../generated/schema"
 
@@ -51,7 +50,8 @@ function getOrCreateGlobalStats(): GlobalStats {
 export function handleHuntCreated(event: HuntCreated): void {
   const hunt = new Hunt(event.params.huntId.toString())
   hunt.creator          = event.params.creator
-  hunt.clueCount        = event.params.clueCount.toI32()
+  // The current contract has one answer per hunt; clueCount is retained for the UI schema.
+  hunt.clueCount        = 1
   hunt.prize            = event.params.prize
   hunt.participantCount = BigInt.fromI32(0)
   hunt.correctCount     = BigInt.fromI32(0)
@@ -79,20 +79,6 @@ export function handleHuntParticipated(event: HuntParticipated): void {
   const stats = getOrCreateGlobalStats()
   stats.totalParticipants = stats.totalParticipants.plus(BigInt.fromI32(1))
   stats.save()
-}
-
-export function handleClueSolved(event: ClueSolved): void {
-  const huntId = event.params.huntId.toString()
-  const player = getOrCreatePlayer(event.params.player)
-  player.save()
-
-  const id = huntId + "-" + event.params.clueIndex.toString() + "-" + event.params.player.toHexString().toLowerCase()
-  const clueSolve = new ClueSolve(id)
-  clueSolve.hunt      = huntId
-  clueSolve.player    = player.id
-  clueSolve.clueIndex = event.params.clueIndex.toI32()
-  clueSolve.timestamp = event.block.timestamp
-  clueSolve.save()
 }
 
 export function handleCorrectSolution(event: CorrectSolution): void {

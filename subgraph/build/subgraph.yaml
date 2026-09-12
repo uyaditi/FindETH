@@ -1,7 +1,6 @@
 specVersion: 0.0.5
 schema:
-  file: ./schema.graphql
-
+  file: schema.graphql
 dataSources:
   - kind: ethereum
     name: TreasureHunt
@@ -26,9 +25,9 @@ dataSources:
         - GlobalStats
       abis:
         - name: TreasureHunt
-          file: ./abis/TreasureHunt.json
+          file: TreasureHunt/TreasureHunt.json
         - name: TreasureNFT
-          file: ./abis/TreasureNFT.json
+          file: TreasureHunt/TreasureNFT.json
       eventHandlers:
         - event: HuntCreated(indexed uint256,indexed address,uint8,uint256,uint256)
           handler: handleHuntCreated
@@ -52,4 +51,4 @@ dataSources:
           handler: handleHuntClosed
         - event: HuntCancelled(indexed uint256)
           handler: handleHuntCancelled
-      file: ./src/mapping.ts
+      file: TreasureHunt/TreasureHunt.wasm
