@@ -101,6 +101,30 @@
   },
   {
     "type": "function",
+    "name": "clueProgress",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "correctSolvers",
     "inputs": [
       {
@@ -128,9 +152,9 @@
     "name": "createHunt",
     "inputs": [
       {
-        "name": "answerHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "_clueHashes",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       },
       {
         "name": "huntType",
@@ -141,6 +165,16 @@
         "name": "endTime",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "difficulty",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "internalType": "string"
       }
     ],
     "outputs": [
@@ -161,6 +195,49 @@
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getClueHashes",
+    "inputs": [
+      {
+        "name": "huntId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getClueProgress",
+    "inputs": [
+      {
+        "name": "huntId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "player",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -230,9 +307,9 @@
             "internalType": "address"
           },
           {
-            "name": "answerHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
+            "name": "clueCount",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
             "name": "prize",
@@ -372,9 +449,9 @@
         "internalType": "address"
       },
       {
-        "name": "answerHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "clueCount",
+        "type": "uint256",
+        "internalType": "uint256"
       },
       {
         "name": "prize",
@@ -663,6 +740,37 @@
   },
   {
     "type": "event",
+    "name": "ClueSolved",
+    "inputs": [
+      {
+        "name": "huntId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "player",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "clueIndex",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "clueCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "CorrectSolution",
     "inputs": [
       {
@@ -745,6 +853,24 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "clueCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "difficulty",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -1012,6 +1138,11 @@
   {
     "type": "error",
     "name": "InsufficientPrize",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidClues",
     "inputs": []
   },
   {

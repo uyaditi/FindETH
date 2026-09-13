@@ -418,6 +418,21 @@ const CATEGORY_INSIGHTS_QUERY = gql`
       participantCount
       correctCount
     }
+    categoryHunts: hunts(
+      first: $first
+      orderBy: participantCount
+      orderDirection: desc
+    ) {
+      id
+      category
+      prize
+      participantCount
+      correctCount
+      clueCount
+      huntType
+      status
+      difficulty
+    }
   }
 `
 
@@ -432,6 +447,7 @@ export interface RawHuntSample {
   huntType:         string   // 'Race' | 'MysteryDraw'
   status:           string
   difficulty:       string | null
+  category?:         string | null
   createdAt?:       string
 }
 
@@ -477,6 +493,8 @@ export interface CategoryInsights {
 
   // Prize sweet spot — median prize of top-10 by participation
   prizeSweet: number  // ETH
+  topCategory: string | null
+  topCategoryCompletion: number
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -600,11 +618,13 @@ export async function fetchCategoryInsights(sampleSize = 30): Promise<CategoryIn
       raceHunts:     RawHuntSample[]
       drawHunts:     RawHuntSample[]
       topPrizeHunts: RawHuntSample[]
+      categoryHunts: RawHuntSample[]
     }>(CATEGORY_INSIGHTS_QUERY, { first: sampleSize })
 
     const race = data.raceHunts ?? []
     const draw = data.drawHunts ?? []
     const top  = data.topPrizeHunts ?? []
+    const categoryHunts = data.categoryHunts ?? []
 
     const avg = (arr: RawHuntSample[]) =>
       arr.length === 0 ? 0 : arr.map(completionRate).reduce((a, b) => a + b, 0) / arr.length
@@ -624,6 +644,15 @@ export async function fetchCategoryInsights(sampleSize = 30): Promise<CategoryIn
     const topPrices = top.map(h => weiToEth(h.prize))
     const prizeSweet = median(topPrices.length > 0 ? topPrices : [0.05])
 
+    const categoryBuckets: Record<string, RawHuntSample[]> = {}
+    for (const hunt of categoryHunts) {
+      const category = hunt.category?.trim() || 'Uncategorised'
+      ;(categoryBuckets[category] ??= []).push(hunt)
+    }
+    const topCategoryEntry = Object.entries(categoryBuckets)
+      .map(([category, hunts]) => [category, avg(hunts), hunts.length] as const)
+      .sort((a, b) => b[2] - a[2] || b[1] - a[1])[0]
+
     return {
       raceHunts:         race,
       drawHunts:         draw,
@@ -633,6 +662,8 @@ export async function fetchCategoryInsights(sampleSize = 30): Promise<CategoryIn
       recommendedType:   raceAvg >= drawAvg ? 'Race' : 'MysteryDraw',
       optimalClueCount:  optClues,
       prizeSweet,
+      topCategory: topCategoryEntry?.[0] ?? null,
+      topCategoryCompletion: topCategoryEntry?.[1] ?? 0,
     }
   } catch {
     return null

@@ -6,9 +6,9 @@ dataSources:
     name: TreasureHunt
     network: sepolia
     source:
-      address: "0x74669f8c080b56221C5233f2B21d8aB88DC382F5"
+      address: "0x4244c9B3D3B379B1C4e58F7062b1ed90A332a431"
       abi: TreasureHunt
-      startBlock: 11683108
+      startBlock: 11695380
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -25,9 +25,9 @@ dataSources:
         - GlobalStats
       abis:
         - name: TreasureHunt
-          file: TreasureHunt/abis/TreasureHunt.json
+          file: TreasureHunt/TreasureHunt.json
         - name: TreasureNFT
-          file: TreasureHunt/abis/TreasureNFT.json
+          file: TreasureHunt/TreasureNFT.json
       eventHandlers:
         - event: HuntCreated(indexed uint256,indexed
             address,uint8,uint256,uint256,uint256,string,string)

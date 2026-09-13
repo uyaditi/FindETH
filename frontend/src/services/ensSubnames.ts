@@ -30,6 +30,7 @@ import {
   ENSV2_SEPOLIA,
   ENSV2_NAMESPACE_REGISTRY,
   ENSV2_PERMISSIONED_RESOLVER,
+  INITIAL_OWNER_ROLE_BITMAP,
   PLATFORM_ENS_NAME,
   REGISTRY_ABI,
   PERMISSIONED_RESOLVER_ABI,
@@ -128,7 +129,7 @@ export function buildRegisterBrandNamespace(
       ownerAddress,                          // owner
       '0x0000000000000000000000000000000000000000', // child registry
       resolverAddress(),                      // resolver proxy
-      0n,                                    // initial role bitmap
+      INITIAL_OWNER_ROLE_BITMAP,             // set resolver/subregistry roles
       expiryTimestamp(2),                    // expiry: 2 years
     ],
   }
@@ -190,7 +191,7 @@ export function buildRegisterHuntSubname(
       ownerAddress,
       '0x0000000000000000000000000000000000000000',
       resolverAddress(),
-      0n,
+      INITIAL_OWNER_ROLE_BITMAP,
       expiryTimestamp(2),
     ],
   }
@@ -258,7 +259,7 @@ export function buildRegisterAgentSubname(
         ownerAddress,
         '0x0000000000000000000000000000000000000000',
         resolverAddress(),
-        0n,
+        INITIAL_OWNER_ROLE_BITMAP,
         expiryTimestamp(2),
       ],
     },

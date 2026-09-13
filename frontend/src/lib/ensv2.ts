@@ -237,6 +237,7 @@ export const UNIVERSAL_RESOLVER_ABI = [
 export const ROLE_SET_TEXT = 1n << 4n
 export const WRITER_ROLE  = ROLE_SET_TEXT
 export const MANAGER_ROLE = ROLE_SET_TEXT
+export const INITIAL_OWNER_ROLE_BITMAP = (1n << 20n) | (1n << 24n)
 export const ADMIN_ROLE   = '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`
 
 // ─────────────────────────────────────────────────────────────────────────────

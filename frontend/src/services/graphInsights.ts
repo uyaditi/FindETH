@@ -49,6 +49,8 @@ export interface PlatformContext {
   totalPrizeEth:     number   // converted from wei
   avgCompletionRate: number   // 0–100
   topHuntPrizeRange: { min: number; max: number }
+  topCategory: string | null
+  topCategoryCompletion: number
   sampleSize:        number
 
   // For display in the Graph data panel
@@ -133,6 +135,8 @@ function deriveRecommendations(
     totalPrizeEth:     Number(platform.totalPrizeEthWei) / 1e18,
     avgCompletionRate: platform.avgCompletionRate,
     topHuntPrizeRange: platform.topHuntPrizeRange,
+    topCategory: category.topCategory,
+    topCategoryCompletion: category.topCategoryCompletion,
     sampleSize:        platform.sampleSize,
     dataSource,
     queriedAt:         new Date().toISOString(),
@@ -162,6 +166,8 @@ function fallbackRecommendations(dataSource: string): GraphRecommendations {
     totalPrizeEth:     0,
     avgCompletionRate: 0,
     topHuntPrizeRange: { min: 0.05, max: 0.5 },
+    topCategory: null,
+    topCategoryCompletion: 0,
     sampleSize:        0,
     dataSource,
     queriedAt:         new Date().toISOString(),
@@ -222,6 +228,7 @@ export function formatRecommendationsForPrompt(rec: GraphRecommendations): strin
     `Total players:    ${ctx.totalParticipants.toLocaleString()}`,
     `Total prize pool: ${ctx.totalPrizeEth.toFixed(2)} ETH distributed on-chain`,
     `Avg completion:   ${ctx.avgCompletionRate}% across last ${ctx.sampleSize} hunts`,
+    `Top category:     ${ctx.topCategory ?? 'not enough data'}${ctx.topCategory ? ` (${Math.round(ctx.topCategoryCompletion)}% completion)` : ''}`,
     '',
     '--- AI Recommendations derived from live data ---',
     '',

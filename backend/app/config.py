@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     # backend runs with zero extra infrastructure. Point this at a real
     # Postgres URL instead (e.g. postgresql+psycopg2://user:pass@host/db) for
     # a more production-realistic setup.
-    DATABASE_URL: str = "sqlite:///./treasurehunts.db"
+    # DATABASE_URL: str = "sqlite:///./treasurehunts.db"
+
+    DATABASE_URL= "postgresql://postgres:[happyaditi12367]@db.gvddxiwlvunnzzaydmsy.supabase.co:5432/postgres"
 
     # Select the backend used by /api/ai/*: "ollama" or "gemini".
     AI_PROVIDER: str = "ollama"

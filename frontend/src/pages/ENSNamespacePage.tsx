@@ -34,7 +34,7 @@ import {
   useAgentWriterRole,
   useIsOnSepolia,
 } from '@/hooks/useENSv2'
-import { toBrandSlug, huntSubname, agentSubname, brandName as makeBrandName, PLATFORM_ENS_NAME, ENSV2_SEPOLIA, TEXT_KEYS } from '@/lib/ensv2'
+import { toBrandSlug, huntSubname, agentSubname, brandName as makeBrandName, PLATFORM_ENS_NAME, ENSV2_SEPOLIA, ENSV2_PERMISSIONED_RESOLVER, TEXT_KEYS } from '@/lib/ensv2'
 import { cn, copyToClipboard } from '@/lib/utils'
 import { fetchCreatorHunts } from '@/services/graph'
 import type { Hunt } from '@/types'
@@ -213,8 +213,8 @@ function BrandNamespaceSection({ brandSlug }: { brandSlug: string }) {
               <div className="flex items-center gap-2 text-xs">
                 <Lock className="w-3 h-3 text-arcane-light" />
                 <span className="text-muted">Resolver:</span>
-                <span className="font-mono text-dim text-[10px]">{ENSV2_SEPOLIA.PermissionedResolverImpl}</span>
-                <CopyButton text={ENSV2_SEPOLIA.PermissionedResolverImpl} />
+                <span className="font-mono text-dim text-[10px]">{ENSV2_PERMISSIONED_RESOLVER || 'Not configured'}</span>
+                {ENSV2_PERMISSIONED_RESOLVER && <CopyButton text={ENSV2_PERMISSIONED_RESOLVER} />}
               </div>
 
               {/* Register CTA */}
@@ -580,7 +580,7 @@ function NamespaceTree({ brandSlug }: { brandSlug: string }) {
       <div className="mt-4 pt-3 border-t border-border grid grid-cols-2 gap-2 text-[10px] text-muted">
         <div>
           <p className="text-dim font-medium mb-1">Resolver</p>
-          <p className="font-mono text-[9px] break-all">{ENSV2_SEPOLIA.PermissionedResolverImpl}</p>
+          <p className="font-mono text-[9px] break-all">{ENSV2_PERMISSIONED_RESOLVER || 'Configure VITE_ENS_PERMISSIONED_RESOLVER'}</p>
         </div>
         <div>
           <p className="text-dim font-medium mb-1">Registry</p>
@@ -716,7 +716,7 @@ export default function ENSNamespacePage() {
             <div className="space-y-2">
               {[
                 { label: 'ETHRegistry',        addr: ENSV2_SEPOLIA.ETHRegistry },
-                { label: 'PermissionedResolver', addr: ENSV2_SEPOLIA.PermissionedResolverImpl },
+                { label: 'PermissionedResolver proxy', addr: ENSV2_PERMISSIONED_RESOLVER || 'not configured' },
                 { label: 'PublicResolverV2',   addr: ENSV2_SEPOLIA.PublicResolverV2 },
                 { label: 'UniversalResolver',  addr: ENSV2_SEPOLIA.UniversalResolver },
               ].map(({ label, addr }) => (
