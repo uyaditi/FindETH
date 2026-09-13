@@ -25,7 +25,7 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
     struct Hunt {
         uint256 id;
         address creator;
-        bytes32 answerHash;       // keccak256(normalised answer) — never plaintext
+        uint256 clueCount;
         uint256 prize;            // wei
         uint256 participantCount;
         uint256 correctCount;
@@ -67,6 +67,12 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
     /// huntId → ordered list of correct solvers (for Mystery Draw)
     mapping(uint256 => address[]) public correctSolvers;
 
+    /// huntId → clue answer hashes, in order
+    mapping(uint256 => bytes32[]) private clueHashes;
+
+    /// huntId → player → next clue index to solve
+    mapping(uint256 => mapping(address => uint256)) public clueProgress;
+
     /// VRF requestId → huntId
     mapping(uint256 => uint256) public vrfRequestToHunt;
 
@@ -79,9 +85,13 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
         address indexed creator,
         HuntType huntType,
         uint256 prize,
-        uint256 endTime
+        uint256 endTime,
+        uint256 clueCount,
+        string difficulty,
+        string category
     );
     event HuntParticipated(uint256 indexed huntId, address indexed player);
+    event ClueSolved(uint256 indexed huntId, address indexed player, uint256 clueIndex, uint256 clueCount);
     event CorrectSolution(uint256 indexed huntId, address indexed player, uint256 position);
     event IncorrectSolution(uint256 indexed huntId, address indexed player);
     event HuntSolved(uint256 indexed huntId, address indexed winner, uint256 prize);
@@ -112,6 +122,7 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
     error ZeroAddress();
     error HuntAlreadySolved();
     error FeeTooHigh();
+    error InvalidClues();
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
@@ -143,14 +154,16 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
 
     /**
      * @notice Create a new treasure hunt and fund the prize.
-     * @param answerHash  keccak256 hash of the normalised final answer.
+     * @param _clueHashes  keccak256 hashes of normalised clue answers, in order.
      * @param huntType    Race or MysteryDraw.
      * @param endTime     Unix timestamp deadline. 0 = no deadline.
      */
     function createHunt(
-        bytes32   answerHash,
+        bytes32[] calldata _clueHashes,
         HuntType  huntType,
-        uint256   endTime
+        uint256   endTime,
+        string calldata difficulty,
+        string calldata category
     )
         external
         payable
@@ -158,6 +171,7 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
         returns (uint256 huntId)
     {
         if (msg.value == 0) revert InsufficientPrize();
+        if (_clueHashes.length == 0) revert InvalidClues();
         if (endTime != 0 && endTime <= block.timestamp) revert InvalidEndTime();
 
         huntId = ++huntCount;
@@ -165,7 +179,7 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
         hunts[huntId] = Hunt({
             id:              huntId,
             creator:         msg.sender,
-            answerHash:      answerHash,
+            clueCount:       _clueHashes.length,
             prize:           msg.value,
             participantCount: 0,
             correctCount:    0,
@@ -178,7 +192,11 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
             prizeClaimed:    false
         });
 
-        emit HuntCreated(huntId, msg.sender, huntType, msg.value, endTime);
+        for (uint256 i = 0; i < _clueHashes.length; i++) {
+            clueHashes[huntId].push(_clueHashes[i]);
+        }
+
+        emit HuntCreated(huntId, msg.sender, huntType, msg.value, endTime, _clueHashes.length, difficulty, category);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -209,19 +227,26 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
             emit HuntParticipated(huntId, msg.sender);
         }
 
-        if (answerHash == hunt.answerHash) {
-            // ── Correct ──────────────────────────────────────────────────────
-            hasSolved[huntId][msg.sender] = true;
-            hunt.correctCount++;
-            correctSolvers[huntId].push(msg.sender);
+        uint256 nextClue = clueProgress[huntId][msg.sender];
+        if (nextClue >= hunt.clueCount) revert AlreadySolved();
 
-            emit CorrectSolution(huntId, msg.sender, hunt.correctCount);
+        if (answerHash == clueHashes[huntId][nextClue]) {
+            emit ClueSolved(huntId, msg.sender, nextClue, hunt.clueCount);
+            clueProgress[huntId][msg.sender] = nextClue + 1;
 
-            if (hunt.huntType == HuntType.Race) {
-                // First correct solver wins immediately
-                _finalise(huntId, msg.sender);
+            if (nextClue + 1 == hunt.clueCount) {
+                hasSolved[huntId][msg.sender] = true;
+                hunt.correctCount++;
+                correctSolvers[huntId].push(msg.sender);
+
+                emit CorrectSolution(huntId, msg.sender, hunt.correctCount);
+
+                if (hunt.huntType == HuntType.Race) {
+                    // First full solver wins immediately
+                    _finalise(huntId, msg.sender);
+                }
+                // For MysteryDraw we accumulate solvers; creator/owner calls closeAndDraw
             }
-            // For MysteryDraw we accumulate solvers; creator/owner calls closeAndDraw
         } else {
             emit IncorrectSolution(huntId, msg.sender);
         }
@@ -371,6 +396,14 @@ contract TreasureHunt is ReentrancyGuard, Ownable, Pausable, VRFConsumerBaseV2 {
 
     function getHunt(uint256 huntId) external view returns (Hunt memory) {
         return hunts[huntId];
+    }
+
+    function getClueHashes(uint256 huntId) external view returns (bytes32[] memory) {
+        return clueHashes[huntId];
+    }
+
+    function getClueProgress(uint256 huntId, address player) external view returns (uint256) {
+        return clueProgress[huntId][player];
     }
 
     function getCorrectSolvers(uint256 huntId) external view returns (address[] memory) {

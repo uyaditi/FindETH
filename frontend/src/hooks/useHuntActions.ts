@@ -32,6 +32,8 @@ export function useCreateHunt() {
     huntType:    HuntType
     endTime:     number   // unix timestamp, 0 = no deadline
     prizeEth:    string   // "0.05"
+    difficulty:  string
+    category:    string
   }) => {
     try {
       setTxStatus({ state: 'confirming', message: 'Waiting for wallet confirmation...' })
@@ -45,7 +47,7 @@ export function useCreateHunt() {
         address:      addresses.TREASURE_HUNT,
         abi:          TREASURE_HUNT_ABI,
         functionName: 'createHunt',
-        args:         [clueHashes, params.huntType, BigInt(params.endTime)],
+        args:         [clueHashes, params.huntType, BigInt(params.endTime), params.difficulty, params.category],
         value:        prizeWei,
       })
 
@@ -65,7 +67,7 @@ export function useCreateHunt() {
   // When confirmed, extract hunt ID from receipt
   if (isSuccess && txStatus.state === 'pending' && receipt) {
     // Parse HuntCreated event to get the huntId
-    const huntCreatedTopic = keccak256(toHex('HuntCreated(uint256,address,uint8,uint256,uint256,uint256)'))
+    const huntCreatedTopic = keccak256(toHex('HuntCreated(uint256,address,uint8,uint256,uint256,uint256,string,string)'))
     const huntCreatedLog = receipt.logs.find(log => log.topics[0] === huntCreatedTopic)
     
     if (huntCreatedLog && huntCreatedLog.topics[1]) {

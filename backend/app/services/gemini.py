@@ -79,6 +79,10 @@ def _hunt_generation_prompt(hunt_input: AIHuntGenerationInput, source_text: str,
             "window sticker, a receipt footer, an email newsletter)."
         )
 
+    graph_context = ""
+    if hunt_input.graphContext:
+        graph_context = "\n" + str(hunt_input.graphContext.get("promptBlock") or hunt_input.graphContext) + "\n"
+
     return f"""You are designing a real-world/online "treasure hunt" marketing campaign for a
 business, to be played by users who engage with the business's own content.
 
@@ -90,6 +94,7 @@ Target audience: {hunt_input.targetAudience}
 Marketing channels: {", ".join(hunt_input.channels) or "not specified"}
 Desired difficulty: {hunt_input.difficulty}
 Suggested prize (ETH): {hunt_input.prize}
+{graph_context}
 
 Below is {source_heading}.
 {grounding_note}
@@ -127,6 +132,9 @@ Requirements:
    0 when working from a plain description rather than a scraped website).
 11. `suggestedPrize` MUST be a plain decimal number as a string (e.g. "0.05"),
    with no currency unit, symbol, or extra text of any kind.
+12. If live Graph recommendations were provided above, use them as defaults for
+   clue count, difficulty, hunt type, and prize unless the creator's explicit
+   form choices conflict with the source material.
 
 Return ONLY the structured JSON described by the response schema."""
 

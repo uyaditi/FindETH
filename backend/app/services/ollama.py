@@ -39,6 +39,10 @@ def _get_settings():
 
 
 def _hunt_generation_prompt(hunt_input: AIHuntGenerationInput, page_text: str) -> str:
+    graph_context = ""
+    if hunt_input.graphContext:
+        graph_context = "\n" + str(hunt_input.graphContext.get("promptBlock") or hunt_input.graphContext) + "\n"
+
     return f"""You are designing a real-world/online "treasure hunt" marketing campaign for a
 business, to be played by users who click through real pages of the business's own website.
 
@@ -50,6 +54,7 @@ Target audience: {hunt_input.targetAudience}
 Marketing channels: {", ".join(hunt_input.channels) or "not specified"}
 Desired difficulty: {hunt_input.difficulty}
 Suggested prize (ETH): {hunt_input.prize}
+{graph_context}
 
 Below is the REAL visible text content fetched from the business's own website
 (businessUrl). It has been stripped of scripts/styles/navigation and truncated.
@@ -59,11 +64,13 @@ Ground every clue in this content. Do not invent products, pages, or facts.
 {page_text}
 --- END FETCHED PAGE CONTENT ---
 
-Design a sequential treasure hunt with 3-6 clues. Each answer must be a specific
+Design a sequential treasure hunt with exactly {hunt_input.numClues} clues. Each answer must be a specific
 short word or phrase present in, or clearly inferable from, the fetched content.
 Set every locationFound to false. The finalAnswer should normally equal the last
 clue's answer. Include realistic confidence and integer counts for pages, blogs,
-and products identified in the content. Return only the structured JSON."""
+and products identified in the content. Use any live Graph recommendations above
+as defaults when they do not conflict with the creator's request. Return only the
+structured JSON."""
 
 
 def _regenerate_clue_prompt(clue: AIGeneratedClue, business_name: str, business_url: str, page_text: str) -> str:

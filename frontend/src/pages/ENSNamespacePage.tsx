@@ -11,7 +11,7 @@
  *   4. Architecture explainer — shows the full namespace tree
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount } from 'wagmi'
@@ -36,13 +36,15 @@ import {
 } from '@/hooks/useENSv2'
 import { toBrandSlug, huntSubname, agentSubname, brandName as makeBrandName, PLATFORM_ENS_NAME, ENSV2_SEPOLIA, TEXT_KEYS } from '@/lib/ensv2'
 import { cn, copyToClipboard } from '@/lib/utils'
+import { fetchCreatorHunts } from '@/services/graph'
+import type { Hunt } from '@/types'
 
 // ─── Static demo hunts (same as brand dashboard) ─────────────────────────────
-const DEMO_HUNTS = [
-  { id: 'h-001', title: 'The Denim Trail',        status: 'Solved', prize: '0.5',  isAI: true  },
-  { id: 'h-002', title: 'Fabric Code: Summer',    status: 'Active', prize: '0.3',  isAI: false },
-  { id: 'h-003', title: 'Archive Drop Hunt',       status: 'Closed', prize: '0.44', isAI: true  },
-]
+type ENSHunt = { id: string; title: string; status: string; prize: string; isAI: boolean; difficulty?: string; category?: string }
+
+function huntStatusLabel(status: Hunt['status']): string {
+  return ['Active', 'Closed', 'Solved', 'Cancelled'][Number(status)] ?? 'Active'
+}
 
 const AGENT_ADDR_PLACEHOLDER = '0x000000000000000000000000000000000000dEaD'
 
@@ -262,7 +264,7 @@ function HuntSubnameRow({
   hunt,
   brandSlug,
 }: {
-  hunt: typeof DEMO_HUNTS[number]
+  hunt: ENSHunt
   brandSlug: string
 }) {
   const fullName = huntSubname(hunt.id, brandSlug)
@@ -417,7 +419,7 @@ function AgentSubnameRow({
   hunt,
   brandSlug,
 }: {
-  hunt: typeof DEMO_HUNTS[number]
+  hunt: ENSHunt
   brandSlug: string
 }) {
   const fullName = agentSubname(hunt.id, brandSlug)
@@ -598,6 +600,22 @@ export default function ENSNamespacePage() {
   const isOnSepolia = useIsOnSepolia()
 
   const brandSlug = brandName ? toBrandSlug(brandName) : ''
+  const [hunts, setHunts] = useState<ENSHunt[]>([])
+
+  useEffect(() => {
+    if (!address) return
+    fetchCreatorHunts(address).then((liveHunts: Hunt[]) => {
+      setHunts(liveHunts.map(hunt => ({
+        id: hunt.id,
+        title: hunt.title || `Hunt #${hunt.id}`,
+        status: huntStatusLabel(hunt.status),
+        prize: (Number(hunt.prize) / 1e18).toFixed(4),
+        isAI: !!hunt.isAiGenerated,
+        difficulty: hunt.difficulty,
+        category: hunt.category,
+      })))
+    })
+  }, [address])
 
   if (!isConnected) {
     return (
@@ -662,10 +680,10 @@ export default function ENSNamespacePage() {
             <p className="text-dim text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-2">
               <KeyRound className="w-3.5 h-3.5 text-gold" />
               2. Hunt Subnames
-              <span className="badge badge-gray text-[10px]">{DEMO_HUNTS.length}</span>
+              <span className="badge badge-gray text-[10px]">{hunts.length}</span>
             </p>
             <div className="flex flex-col gap-2">
-              {DEMO_HUNTS.map(hunt => (
+              {hunts.map(hunt => (
                 <HuntSubnameRow key={hunt.id} hunt={hunt} brandSlug={brandSlug} />
               ))}
             </div>
@@ -679,7 +697,7 @@ export default function ENSNamespacePage() {
               <span className="badge badge-arcane text-[10px]">WRITER_ROLE</span>
             </p>
             <div className="flex flex-col gap-2">
-              {DEMO_HUNTS.filter(h => h.isAI).map(hunt => (
+              {hunts.filter(h => h.isAI).map(hunt => (
                 <AgentSubnameRow key={hunt.id} hunt={hunt} brandSlug={brandSlug} />
               ))}
             </div>

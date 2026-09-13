@@ -11,10 +11,12 @@ import {
 
 import { generateHunt, regenerateClue, PIPELINE_STEPS, type PipelineStep, type GraphRecommendations } from '@/services/ai'
 import { useCreateHunt } from '@/hooks/useHuntActions'
+import { useRegisterHuntSubname } from '@/hooks/useENSv2'
 import TxButton from '@/components/ui/TxButton'
 import TxStatusBanner from '@/components/ui/TxStatusBanner'
 import { saveHuntMetadata, metadataPublishMessage } from '@/lib/huntMetadata'
 import { cn, copyToClipboard } from '@/lib/utils'
+import { toBrandSlug } from '@/lib/ensv2'
 import { hashAnswer, spoilerSafe } from '@/lib/answerHash'
 import {
   DIFFICULTIES, HUNT_TYPES, BUSINESS_TYPES, CONTENT_CHANNELS, SUBGRAPH_URL,
@@ -650,6 +652,7 @@ export default function AICreatePage() {
   const [metadataError, setMetadataError] = useState<string | null>(null)
 
   const { createHunt, txStatus, isPending, isSuccess, newHuntId } = useCreateHunt()
+  const { register: registerENSHunt, error: ensError } = useRegisterHuntSubname()
 
   const handleGenerate = async (formInput: AIHuntGenerationInput) => {
     setInput(formInput)
@@ -697,6 +700,8 @@ export default function AICreatePage() {
       huntType:    draft.huntType,
       endTime:     Math.floor(Date.now() / 1000) + 7 * 86400,
       prizeEth:    draft.suggestedPrize || input.prize,
+      difficulty:  draft.difficulty,
+      category:    'Business',
     })
   }
 
@@ -731,8 +736,23 @@ export default function AICreatePage() {
           aiConfidence: draft.confidence,
           creator: address,
         }, signature)
+
+        // ENS is part of the AI publishing path: the on-chain hunt receives a
+        // resolvable ENSv2 identity as soon as its signed metadata is saved.
+        await registerENSHunt(newHuntId, toBrandSlug(input.businessName), {
+          huntId: newHuntId,
+          title: draft.title,
+          prize: draft.suggestedPrize || input.prize,
+          status: 'Active',
+          difficulty: draft.difficulty,
+          category: 'Business',
+          creator: address,
+          createdAt: new Date().toISOString(),
+          isAiGenerated: true,
+          txHash: txStatus.hash,
+        })
       } catch (err) {
-        setMetadataError(err instanceof Error ? err.message : 'Failed to publish hunt metadata.')
+        setMetadataError(err instanceof Error ? err.message : 'Failed to publish hunt metadata or ENSv2 identity.')
       } finally {
         setPublished(true)
       }
@@ -757,6 +777,11 @@ export default function AICreatePage() {
             <div className="card w-full p-4 border-danger/30 bg-danger/5 text-danger text-sm text-left">
               Hunt is live on-chain, but publishing its title/clue text failed: {metadataError}.
               Players can still solve it, but the page may only show "Hunt #{newHuntId}" until this is fixed.
+            </div>
+          )}
+          {ensError && !metadataError && (
+            <div className="card w-full p-4 border-warning/30 bg-warning/5 text-warning text-sm text-left">
+              Hunt metadata was saved, but ENSv2 registration needs the brand UserRegistry configured: {ensError}.
             </div>
           )}
           <div className="flex gap-3">

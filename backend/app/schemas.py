@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -107,6 +107,7 @@ class AIHuntGenerationInput(BaseModel):
     huntType: int
     prize: str
     numClues: int = Field(default=4, ge=2, le=10)
+    graphContext: Optional[dict[str, Any]] = None
 
     @model_validator(mode="after")
     def _require_source(self):

@@ -2,6 +2,7 @@ import { BigInt, Bytes, Address } from "@graphprotocol/graph-ts"
 import {
   HuntCreated,
   HuntParticipated,
+  ClueSolved,
   CorrectSolution,
   IncorrectSolution,
   HuntSolved,
@@ -13,7 +14,7 @@ import {
   HuntCancelled,
 } from "../generated/TreasureHunt/TreasureHunt"
 import {
-  Hunt, Player, Solution, RandomnessRequest,
+  Hunt, Player, Solution, ClueSolve, RandomnessRequest,
   Winner, PrizeClaim, NFT, GlobalStats,
 } from "../generated/schema"
 
@@ -45,19 +46,28 @@ function getOrCreateGlobalStats(): GlobalStats {
   return stats
 }
 
+function titleCaseDifficulty(value: string): string {
+  const lower = value.toLowerCase()
+  if (lower === "easy") return "Easy"
+  if (lower === "hard") return "Hard"
+  if (lower === "expert") return "Expert"
+  return "Medium"
+}
+
 // ── Event handlers ────────────────────────────────────────────────────────────
 
 export function handleHuntCreated(event: HuntCreated): void {
   const hunt = new Hunt(event.params.huntId.toString())
   hunt.creator          = event.params.creator
-  // The current contract has one answer per hunt; clueCount is retained for the UI schema.
-  hunt.clueCount        = 1
+  hunt.clueCount        = event.params.clueCount.toI32()
   hunt.prize            = event.params.prize
   hunt.participantCount = BigInt.fromI32(0)
   hunt.correctCount     = BigInt.fromI32(0)
   hunt.createdAt        = event.block.timestamp
   hunt.endTime          = event.params.endTime
   hunt.huntType         = event.params.huntType === 0 ? "Race" : "MysteryDraw"
+  hunt.difficulty       = titleCaseDifficulty(event.params.difficulty)
+  hunt.category         = event.params.category
   hunt.status           = "Active"
   hunt.winner           = null
   hunt.vrfRequestId     = null
@@ -79,6 +89,20 @@ export function handleHuntParticipated(event: HuntParticipated): void {
   const stats = getOrCreateGlobalStats()
   stats.totalParticipants = stats.totalParticipants.plus(BigInt.fromI32(1))
   stats.save()
+}
+
+export function handleClueSolved(event: ClueSolved): void {
+  const huntId = event.params.huntId.toString()
+  const player = getOrCreatePlayer(event.params.player)
+  player.save()
+
+  const solveId = huntId + "-" + event.params.clueIndex.toString() + "-" + event.params.player.toHexString().toLowerCase()
+  const solve = new ClueSolve(solveId)
+  solve.hunt = huntId
+  solve.player = player.id
+  solve.clueIndex = event.params.clueIndex.toI32()
+  solve.timestamp = event.block.timestamp
+  solve.save()
 }
 
 export function handleCorrectSolution(event: CorrectSolution): void {

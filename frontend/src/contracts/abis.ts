@@ -110,6 +110,8 @@ export const TREASURE_HUNT_ABI = [
       { name: 'clueHashes', type: 'bytes32[]' },
       { name: 'huntType',   type: 'uint8'   },
       { name: 'endTime',    type: 'uint256' },
+      { name: 'difficulty', type: 'string'  },
+      { name: 'category',   type: 'string'  },
     ],
     outputs: [{ name: 'huntId', type: 'uint256' }],
   },
@@ -149,6 +151,8 @@ export const TREASURE_HUNT_ABI = [
       { name: 'prize',     type: 'uint256', indexed: false },
       { name: 'endTime',   type: 'uint256', indexed: false },
       { name: 'clueCount', type: 'uint256', indexed: false },
+      { name: 'difficulty', type: 'string', indexed: false },
+      { name: 'category', type: 'string', indexed: false },
     ],
   },
   {

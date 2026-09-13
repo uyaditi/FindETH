@@ -26,7 +26,7 @@ enum Difficulty {
 
 # ── Core entities ─────────────────────────────────────────────────────────────
 
-type Hunt @entity(immutable: true) {
+type Hunt @entity {
   id:               ID!                  # on-chain huntId as string
   creator:          Bytes!               # address
   clueCount:        Int!                 # number of sequential clues
@@ -55,7 +55,7 @@ type Hunt @entity(immutable: true) {
   nft:                 NFT                   @derivedFrom(field: "hunt")
 }
 
-type Player @entity(immutable: true) {
+type Player @entity {
   id:           ID!      # address as lowercase hex
   wins:         BigInt!
   huntsSolved:  BigInt!
@@ -85,7 +85,7 @@ type ClueSolve @entity(immutable: true) {
   timestamp: BigInt!
 }
 
-type RandomnessRequest @entity(immutable: true) {
+type RandomnessRequest @entity {
   id:          ID!     # requestId as string
   hunt:        Hunt!
   requestId:   BigInt!
@@ -120,7 +120,7 @@ type NFT @entity(immutable: true) {
 
 # ── Aggregate stats (single entity, id = "global") ────────────────────────────
 
-type GlobalStats @entity(immutable: true) {
+type GlobalStats @entity {
   id:                ID!   # "global"
   totalHunts:        BigInt!
   totalParticipants: BigInt!

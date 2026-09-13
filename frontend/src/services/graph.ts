@@ -160,14 +160,25 @@ const HUNT_ANALYTICS_QUERY = gql`
 // ─────────────────────────────────────────────────────────────────────────────
 
 function mapHunt(raw: Record<string, string>): Partial<Hunt> {
+  const statusMap: Record<string, HuntStatus> = {
+    Active: HuntStatus.Active,
+    Closed: HuntStatus.Closed,
+    Solved: HuntStatus.Solved,
+    Cancelled: HuntStatus.Cancelled,
+  }
+  const typeMap: Record<string, HuntType> = {
+    Race: HuntType.Race,
+    MysteryDraw: HuntType.MysteryDraw,
+  }
+
   return {
     id:               raw.id,
     creator:          raw.creator,
     prize:            BigInt(raw.prize ?? '0'),
     participantCount: Number(raw.participantCount ?? 0),
     correctCount:     Number(raw.correctCount ?? 0),
-    status:           Number(raw.status ?? 0) as HuntStatus,
-    huntType:         Number(raw.huntType ?? 0) as HuntType,
+    status:           statusMap[raw.status] ?? (Number(raw.status ?? 0) as HuntStatus),
+    huntType:         typeMap[raw.huntType] ?? (Number(raw.huntType ?? 0) as HuntType),
     createdAt:        Number(raw.createdAt ?? 0),
     endTime:          raw.endTime ? Number(raw.endTime) : undefined,
     winner:           raw.winner || undefined,

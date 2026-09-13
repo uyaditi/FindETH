@@ -10,6 +10,36 @@ import {
   BigInt,
 } from "@graphprotocol/graph-ts";
 
+export class ClueSolved extends ethereum.Event {
+  get params(): ClueSolved__Params {
+    return new ClueSolved__Params(this);
+  }
+}
+
+export class ClueSolved__Params {
+  _event: ClueSolved;
+
+  constructor(event: ClueSolved) {
+    this._event = event;
+  }
+
+  get huntId(): BigInt {
+    return this._event.parameters[0].value.toBigInt();
+  }
+
+  get player(): Address {
+    return this._event.parameters[1].value.toAddress();
+  }
+
+  get clueIndex(): BigInt {
+    return this._event.parameters[2].value.toBigInt();
+  }
+
+  get clueCount(): BigInt {
+    return this._event.parameters[3].value.toBigInt();
+  }
+}
+
 export class CorrectSolution extends ethereum.Event {
   get params(): CorrectSolution__Params {
     return new CorrectSolution__Params(this);
@@ -103,6 +133,18 @@ export class HuntCreated__Params {
 
   get endTime(): BigInt {
     return this._event.parameters[4].value.toBigInt();
+  }
+
+  get clueCount(): BigInt {
+    return this._event.parameters[5].value.toBigInt();
+  }
+
+  get difficulty(): string {
+    return this._event.parameters[6].value.toString();
+  }
+
+  get category(): string {
+    return this._event.parameters[7].value.toString();
   }
 }
 
@@ -361,8 +403,8 @@ export class TreasureHunt__getHuntResultValue0Struct extends ethereum.Tuple {
     return this[1].toAddress();
   }
 
-  get answerHash(): Bytes {
-    return this[2].toBytes();
+  get clueCount(): BigInt {
+    return this[2].toBigInt();
   }
 
   get prize(): BigInt {
@@ -409,7 +451,7 @@ export class TreasureHunt__getHuntResultValue0Struct extends ethereum.Tuple {
 export class TreasureHunt__huntsResult {
   value0: BigInt;
   value1: Address;
-  value2: Bytes;
+  value2: BigInt;
   value3: BigInt;
   value4: BigInt;
   value5: BigInt;
@@ -424,7 +466,7 @@ export class TreasureHunt__huntsResult {
   constructor(
     value0: BigInt,
     value1: Address,
-    value2: Bytes,
+    value2: BigInt,
     value3: BigInt,
     value4: BigInt,
     value5: BigInt,
@@ -455,7 +497,7 @@ export class TreasureHunt__huntsResult {
     let map = new TypedMap<string, ethereum.Value>();
     map.set("value0", ethereum.Value.fromUnsignedBigInt(this.value0));
     map.set("value1", ethereum.Value.fromAddress(this.value1));
-    map.set("value2", ethereum.Value.fromFixedBytes(this.value2));
+    map.set("value2", ethereum.Value.fromUnsignedBigInt(this.value2));
     map.set("value3", ethereum.Value.fromUnsignedBigInt(this.value3));
     map.set("value4", ethereum.Value.fromUnsignedBigInt(this.value4));
     map.set("value5", ethereum.Value.fromUnsignedBigInt(this.value5));
@@ -483,7 +525,7 @@ export class TreasureHunt__huntsResult {
     return this.value1;
   }
 
-  getAnswerHash(): Bytes {
+  getClueCount(): BigInt {
     return this.value2;
   }
 
@@ -594,6 +636,38 @@ export class TreasureHunt extends ethereum.SmartContract {
     return ethereum.CallResult.fromValue(value[0].toI32());
   }
 
+  clueProgress(param0: BigInt, param1: Address): BigInt {
+    let result = super.call(
+      "clueProgress",
+      "clueProgress(uint256,address):(uint256)",
+      [
+        ethereum.Value.fromUnsignedBigInt(param0),
+        ethereum.Value.fromAddress(param1),
+      ],
+    );
+
+    return result[0].toBigInt();
+  }
+
+  try_clueProgress(
+    param0: BigInt,
+    param1: Address,
+  ): ethereum.CallResult<BigInt> {
+    let result = super.tryCall(
+      "clueProgress",
+      "clueProgress(uint256,address):(uint256)",
+      [
+        ethereum.Value.fromUnsignedBigInt(param0),
+        ethereum.Value.fromAddress(param1),
+      ],
+    );
+    if (result.reverted) {
+      return new ethereum.CallResult();
+    }
+    let value = result.value;
+    return ethereum.CallResult.fromValue(value[0].toBigInt());
+  }
+
   correctSolvers(param0: BigInt, param1: BigInt): Address {
     let result = super.call(
       "correctSolvers",
@@ -639,6 +713,61 @@ export class TreasureHunt extends ethereum.SmartContract {
     }
     let value = result.value;
     return ethereum.CallResult.fromValue(value[0].toAddress());
+  }
+
+  getClueHashes(huntId: BigInt): Array<Bytes> {
+    let result = super.call(
+      "getClueHashes",
+      "getClueHashes(uint256):(bytes32[])",
+      [ethereum.Value.fromUnsignedBigInt(huntId)],
+    );
+
+    return result[0].toBytesArray();
+  }
+
+  try_getClueHashes(huntId: BigInt): ethereum.CallResult<Array<Bytes>> {
+    let result = super.tryCall(
+      "getClueHashes",
+      "getClueHashes(uint256):(bytes32[])",
+      [ethereum.Value.fromUnsignedBigInt(huntId)],
+    );
+    if (result.reverted) {
+      return new ethereum.CallResult();
+    }
+    let value = result.value;
+    return ethereum.CallResult.fromValue(value[0].toBytesArray());
+  }
+
+  getClueProgress(huntId: BigInt, player: Address): BigInt {
+    let result = super.call(
+      "getClueProgress",
+      "getClueProgress(uint256,address):(uint256)",
+      [
+        ethereum.Value.fromUnsignedBigInt(huntId),
+        ethereum.Value.fromAddress(player),
+      ],
+    );
+
+    return result[0].toBigInt();
+  }
+
+  try_getClueProgress(
+    huntId: BigInt,
+    player: Address,
+  ): ethereum.CallResult<BigInt> {
+    let result = super.tryCall(
+      "getClueProgress",
+      "getClueProgress(uint256,address):(uint256)",
+      [
+        ethereum.Value.fromUnsignedBigInt(huntId),
+        ethereum.Value.fromAddress(player),
+      ],
+    );
+    if (result.reverted) {
+      return new ethereum.CallResult();
+    }
+    let value = result.value;
+    return ethereum.CallResult.fromValue(value[0].toBigInt());
   }
 
   getCorrectSolverCount(huntId: BigInt): BigInt {
@@ -690,7 +819,7 @@ export class TreasureHunt extends ethereum.SmartContract {
   getHunt(huntId: BigInt): TreasureHunt__getHuntResultValue0Struct {
     let result = super.call(
       "getHunt",
-      "getHunt(uint256):((uint256,address,bytes32,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool))",
+      "getHunt(uint256):((uint256,address,uint256,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool))",
       [ethereum.Value.fromUnsignedBigInt(huntId)],
     );
 
@@ -704,7 +833,7 @@ export class TreasureHunt extends ethereum.SmartContract {
   ): ethereum.CallResult<TreasureHunt__getHuntResultValue0Struct> {
     let result = super.tryCall(
       "getHunt",
-      "getHunt(uint256):((uint256,address,bytes32,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool))",
+      "getHunt(uint256):((uint256,address,uint256,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool))",
       [ethereum.Value.fromUnsignedBigInt(huntId)],
     );
     if (result.reverted) {
@@ -791,14 +920,14 @@ export class TreasureHunt extends ethereum.SmartContract {
   hunts(param0: BigInt): TreasureHunt__huntsResult {
     let result = super.call(
       "hunts",
-      "hunts(uint256):(uint256,address,bytes32,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool)",
+      "hunts(uint256):(uint256,address,uint256,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool)",
       [ethereum.Value.fromUnsignedBigInt(param0)],
     );
 
     return new TreasureHunt__huntsResult(
       result[0].toBigInt(),
       result[1].toAddress(),
-      result[2].toBytes(),
+      result[2].toBigInt(),
       result[3].toBigInt(),
       result[4].toBigInt(),
       result[5].toBigInt(),
@@ -815,7 +944,7 @@ export class TreasureHunt extends ethereum.SmartContract {
   try_hunts(param0: BigInt): ethereum.CallResult<TreasureHunt__huntsResult> {
     let result = super.tryCall(
       "hunts",
-      "hunts(uint256):(uint256,address,bytes32,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool)",
+      "hunts(uint256):(uint256,address,uint256,uint256,uint256,uint256,uint256,uint256,uint8,uint8,address,uint256,bool)",
       [ethereum.Value.fromUnsignedBigInt(param0)],
     );
     if (result.reverted) {
@@ -826,7 +955,7 @@ export class TreasureHunt extends ethereum.SmartContract {
       new TreasureHunt__huntsResult(
         value[0].toBigInt(),
         value[1].toAddress(),
-        value[2].toBytes(),
+        value[2].toBigInt(),
         value[3].toBigInt(),
         value[4].toBigInt(),
         value[5].toBigInt(),
@@ -1128,8 +1257,8 @@ export class CreateHuntCall__Inputs {
     this._call = call;
   }
 
-  get answerHash(): Bytes {
-    return this._call.inputValues[0].value.toBytes();
+  get _clueHashes(): Array<Bytes> {
+    return this._call.inputValues[0].value.toBytesArray();
   }
 
   get huntType(): i32 {
@@ -1138,6 +1267,14 @@ export class CreateHuntCall__Inputs {
 
   get endTime(): BigInt {
     return this._call.inputValues[2].value.toBigInt();
+  }
+
+  get difficulty(): string {
+    return this._call.inputValues[3].value.toString();
+  }
+
+  get category(): string {
+    return this._call.inputValues[4].value.toString();
   }
 }
 

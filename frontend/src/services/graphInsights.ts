@@ -58,14 +58,12 @@ export interface PlatformContext {
 
 // ── Difficulty mapping ─────────────────────────────────────────────────────────
 
-const DIFFICULTY_VALUES: Difficulty[] = ['easy', 'medium', 'hard', 'expert']
-
 function normaliseDifficulty(raw: string | null | undefined): Difficulty {
   const d = (raw ?? '').toLowerCase()
-  if (d === 'easy')   return 'easy'
-  if (d === 'hard')   return 'hard'
-  if (d === 'expert') return 'expert'
-  return 'medium'
+  if (d === 'easy')   return 'easy' as Difficulty
+  if (d === 'hard')   return 'hard' as Difficulty
+  if (d === 'expert') return 'expert' as Difficulty
+  return 'medium' as Difficulty
 }
 
 // ── Core derivation logic ──────────────────────────────────────────────────────

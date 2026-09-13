@@ -23,10 +23,14 @@
  * regardless of which network the user's wallet is connected to.
  */
 
-import { createPublicClient, http, encodeAbiParameters, parseAbiParameters } from 'viem'
+import { createPublicClient, http, encodeAbiParameters, parseAbiParameters, toHex } from 'viem'
+import { packetToBytes } from 'viem/ens'
 import { sepolia } from 'viem/chains'
 import {
   ENSV2_SEPOLIA,
+  ENSV2_NAMESPACE_REGISTRY,
+  ENSV2_PERMISSIONED_RESOLVER,
+  PLATFORM_ENS_NAME,
   REGISTRY_ABI,
   PERMISSIONED_RESOLVER_ABI,
   WRITER_ROLE,
@@ -45,6 +49,13 @@ import {
   type BrandENSMetadata,
   type AgentENSMetadata,
 } from '@/lib/ensv2'
+
+function resolverAddress(): `0x${string}` {
+  if (!ENSV2_PERMISSIONED_RESOLVER) {
+    throw new Error('VITE_ENS_PERMISSIONED_RESOLVER must point to an initialized ENSv2 resolver proxy.')
+  }
+  return ENSV2_PERMISSIONED_RESOLVER
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dedicated Sepolia read client (ENSv2 lives on Sepolia, not mainnet)
@@ -104,16 +115,21 @@ export function buildRegisterBrandNamespace(
   ownerAddress: `0x${string}`,
 ): ContractWriteArgs {
   const slug = toBrandSlug(brandName)
+  if (!ENSV2_NAMESPACE_REGISTRY) {
+    throw new Error('VITE_ENS_NAMESPACE_REGISTRY must point to the UserRegistry mounted at treasurehunts.eth.')
+  }
 
   return {
-    address:      ENSV2_SEPOLIA.ETHRegistry,
+    address:      ENSV2_NAMESPACE_REGISTRY,
     abi:          REGISTRY_ABI,
     functionName: 'register',
     args: [
       slug,                                  // label
       ownerAddress,                          // owner
+      '0x0000000000000000000000000000000000000000', // child registry
+      resolverAddress(),                      // resolver proxy
+      0n,                                    // initial role bitmap
       expiryTimestamp(2),                    // expiry: 2 years
-      ENSV2_SEPOLIA.PermissionedResolverImpl, // resolver
     ],
   }
 }
@@ -133,7 +149,7 @@ export function buildSetBrandRecords(
   ]
 
   return entries.map(([key, value]) => ({
-    address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+    address:      resolverAddress(),
     abi:          PERMISSIONED_RESOLVER_ABI,
     functionName: 'setText',
     args:         [node, key, value],
@@ -162,7 +178,8 @@ export function buildRegisterHuntSubname(
   ownerAddress:   `0x${string}`,
   brandRegistry?: `0x${string}`,    // if brand has their own UserRegistry
 ): ContractWriteArgs {
-  const registry = brandRegistry ?? ENSV2_SEPOLIA.ETHRegistry
+  if (!brandRegistry) throw new Error('Register the brand namespace before creating hunt subnames.')
+  const registry = brandRegistry
 
   return {
     address:      registry,
@@ -171,8 +188,10 @@ export function buildRegisterHuntSubname(
     args: [
       huntLabel(huntId),                     // "hunt-42"
       ownerAddress,
+      '0x0000000000000000000000000000000000000000',
+      resolverAddress(),
+      0n,
       expiryTimestamp(2),
-      ENSV2_SEPOLIA.PermissionedResolverImpl,
     ],
   }
 }
@@ -201,7 +220,7 @@ export function buildSetHuntRecords(
   }
 
   return entries.map(([key, value]) => ({
-    address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+    address:      resolverAddress(),
     abi:          PERMISSIONED_RESOLVER_ABI,
     functionName: 'setText',
     args:         [node, key, value],
@@ -224,7 +243,8 @@ export function buildRegisterAgentSubname(
   agentAddress:   `0x${string}`,
   brandRegistry?: `0x${string}`,
 ): ContractWriteArgs[] {
-  const registry = brandRegistry ?? ENSV2_SEPOLIA.ETHRegistry
+  if (!brandRegistry) throw new Error('Register the brand namespace before creating agent subnames.')
+  const registry = brandRegistry
   const huntNode = nameHash(makeHuntSubname(huntId, brandSlug))
 
   return [
@@ -236,17 +256,19 @@ export function buildRegisterAgentSubname(
       args: [
         agentLabel(huntId),                    // "agent-42"
         ownerAddress,
+        '0x0000000000000000000000000000000000000000',
+        resolverAddress(),
+        0n,
         expiryTimestamp(2),
-        ENSV2_SEPOLIA.PermissionedResolverImpl,
       ],
     },
-    // 2. Grant the agent WRITER_ROLE on the hunt's resolver node
-    //    so it can update hunt.status / hunt.prize as the hunt progresses
+    // 2. Grant only the hunt.status text record. ENSv2 permissions are
+    //    scoped by DNS name and record key, never global role strings.
     {
-      address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+      address:      resolverAddress(),
       abi:          PERMISSIONED_RESOLVER_ABI,
-      functionName: 'grantRole',
-      args:         [WRITER_ROLE, agentAddress],
+      functionName: 'authorizeTextRoles',
+      args: [toHex(packetToBytes(makeHuntSubname(huntId, brandSlug))), TEXT_KEYS.huntStatus, agentAddress, true],
     },
   ]
 }
@@ -268,7 +290,7 @@ export function buildSetAgentRecords(
   ]
 
   return entries.map(([key, value]) => ({
-    address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+    address:      resolverAddress(),
     abi:          PERMISSIONED_RESOLVER_ABI,
     functionName: 'setText',
     args:         [node, key, value],
@@ -288,7 +310,7 @@ export function buildUpdateHuntStatus(
   const node = nameHash(makeHuntSubname(huntId, brandSlug))
 
   const writes: ContractWriteArgs[] = [{
-    address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+    address:      resolverAddress(),
     abi:          PERMISSIONED_RESOLVER_ABI,
     functionName: 'setText',
     args:         [node, TEXT_KEYS.huntStatus, status],
@@ -296,7 +318,7 @@ export function buildUpdateHuntStatus(
 
   if (winner) {
     writes.push({
-      address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+      address:      resolverAddress(),
       abi:          PERMISSIONED_RESOLVER_ABI,
       functionName: 'setText',
       args:         [node, 'hunt.winner', winner],
@@ -361,7 +383,7 @@ export async function readHuntSubnameRecords(
   let exists = false
 
   try {
-    records = await readTextRecords(node, HUNT_READ_KEYS, ENSV2_SEPOLIA.PermissionedResolverImpl)
+    records = await readTextRecords(node, HUNT_READ_KEYS, ENSV2_PERMISSIONED_RESOLVER)
     exists  = !!records[TEXT_KEYS.huntId]
   } catch { /* subname not registered yet */ }
 
@@ -370,7 +392,7 @@ export async function readHuntSubnameRecords(
     fullName,
     node,
     owner:    null,   // would need ownerOf call on the registry
-    resolver: ENSV2_SEPOLIA.PermissionedResolverImpl,
+    resolver: ENSV2_PERMISSIONED_RESOLVER,
     records,
     exists,
   }
@@ -386,7 +408,7 @@ export async function readBrandSubnameRecords(
   let exists = false
 
   try {
-    records = await readTextRecords(node, BRAND_READ_KEYS, ENSV2_SEPOLIA.PermissionedResolverImpl)
+    records = await readTextRecords(node, BRAND_READ_KEYS, ENSV2_PERMISSIONED_RESOLVER)
     exists  = !!records[TEXT_KEYS.brandName]
   } catch { /* not registered */ }
 
@@ -395,7 +417,7 @@ export async function readBrandSubnameRecords(
     fullName,
     node,
     owner:    null,
-    resolver: ENSV2_SEPOLIA.PermissionedResolverImpl,
+    resolver: ENSV2_PERMISSIONED_RESOLVER,
     records,
     exists,
   }
@@ -412,7 +434,7 @@ export async function readAgentSubnameRecords(
   let exists = false
 
   try {
-    records = await readTextRecords(node, AGENT_READ_KEYS, ENSV2_SEPOLIA.PermissionedResolverImpl)
+    records = await readTextRecords(node, AGENT_READ_KEYS, ENSV2_PERMISSIONED_RESOLVER)
     exists  = !!records[TEXT_KEYS.agentHuntId]
   } catch { /* not registered */ }
 
@@ -421,7 +443,7 @@ export async function readAgentSubnameRecords(
     fullName,
     node,
     owner:    null,
-    resolver: ENSV2_SEPOLIA.PermissionedResolverImpl,
+    resolver: ENSV2_PERMISSIONED_RESOLVER,
     records,
     exists,
   }
@@ -433,17 +455,34 @@ export async function readAgentSubnameRecords(
 
 export async function checkSubnameExists(label: string): Promise<boolean> {
   try {
+    if (!ENSV2_NAMESPACE_REGISTRY) return false
     const subregistry = await sepoliaClient.readContract({
-      address:      ENSV2_SEPOLIA.ETHRegistry,
+      address:      ENSV2_NAMESPACE_REGISTRY,
       abi:          REGISTRY_ABI,
       functionName: 'getSubregistry',
-      args:         [label],
+      args:         [labelTokenId(label)],
     }) as `0x${string}`
 
     // Returns zero address when not registered
     return subregistry !== '0x0000000000000000000000000000000000000000'
   } catch {
     return false
+  }
+}
+
+/** Resolve the UserRegistry that owns a brand's children. */
+export async function getBrandSubregistry(brandSlug: string): Promise<`0x${string}` | undefined> {
+  if (!ENSV2_NAMESPACE_REGISTRY) return undefined
+  try {
+    const registry = await sepoliaClient.readContract({
+      address: ENSV2_NAMESPACE_REGISTRY,
+      abi: REGISTRY_ABI,
+      functionName: 'getSubregistry',
+      args: [labelTokenId(brandSlug)],
+    }) as `0x${string}`
+    return registry === '0x0000000000000000000000000000000000000000' ? undefined : registry
+  } catch {
+    return undefined
   }
 }
 
@@ -454,23 +493,18 @@ export async function checkSubnameExists(label: string): Promise<boolean> {
 export async function checkAgentHasWriterRole(agentAddress: `0x${string}`): Promise<boolean> {
   try {
     return await sepoliaClient.readContract({
-      address:      ENSV2_SEPOLIA.PermissionedResolverImpl,
+      address:      ENSV2_PERMISSIONED_RESOLVER || ENSV2_SEPOLIA.PermissionedResolverImpl,
       abi:          PERMISSIONED_RESOLVER_ABI,
-      functionName: 'hasRole',
-      args:         [WRITER_ROLE, agentAddress],
-    }) as boolean
+      functionName: 'roles',
+      args:         ['0x0000000000000000000000000000000000000000000000000000000000000000', agentAddress],
+    }) as bigint > 0n
   } catch {
     return false
   }
 }
 
 // Re-export helpers the UI needs
-export {
-  toBrandSlug,
-  makeHuntSubname   as huntSubname,
-  makeAgentSubname  as agentSubname,
-  makeBrandName     as brandFullName,
-  huntLabel,
-  agentLabel,
-  PLATFORM_ENS_NAME,
-} from '@/lib/ensv2'
+export { toBrandSlug, huntLabel, agentLabel, PLATFORM_ENS_NAME }
+export const huntSubname = makeHuntSubname
+export const agentSubname = makeAgentSubname
+export const brandFullName = makeBrandName

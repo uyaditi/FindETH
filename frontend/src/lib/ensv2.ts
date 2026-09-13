@@ -52,6 +52,19 @@ export const ENSV2_SEPOLIA = {
   ENSV2Resolver:            '0x508cb4e4596429ca98a1bb3112d88d18f92456b5' as `0x${string}`,
 } as const
 
+// This must be the UserRegistry mounted at treasurehunts.eth. ENSv2 is
+// hierarchical: registering a label in ETHRegistry would create brand.eth,
+// not brand.treasurehunts.eth.
+export const ENSV2_NAMESPACE_REGISTRY = (
+  import.meta.env.VITE_ENS_NAMESPACE_REGISTRY || ''
+) as `0x${string}`
+
+// A resolver implementation cannot hold records. This must be an initialized
+// per-account resolver proxy deployed through the ENSv2 VerifiableFactory.
+export const ENSV2_PERMISSIONED_RESOLVER = (
+  import.meta.env.VITE_ENS_PERMISSIONED_RESOLVER || ''
+) as `0x${string}`
+
 // The platform parent name — brands get subnames under this
 export const PLATFORM_ENS_NAME    = 'treasurehunts.eth'
 export const PLATFORM_ENS_LABEL   = 'treasurehunts'
@@ -66,7 +79,8 @@ export const PLATFORM_ENS_LABEL   = 'treasurehunts'
  * setSubregistry — assign a child registry to a subname node
  * setResolver    — point a subname at a resolver
  * setOwner       — transfer subname ownership
- * register       — create a new subname (label, owner, expiry, resolver)
+ * register       — create a new subname with its child registry, resolver,
+ *                  initial role bitmap, and expiry
  */
 export const REGISTRY_ABI = [
   // Create / update a subname
@@ -77,8 +91,10 @@ export const REGISTRY_ABI = [
     inputs: [
       { name: 'label',    type: 'string'  },
       { name: 'owner',    type: 'address' },
-      { name: 'expiry',   type: 'uint64'  },
+      { name: 'registry', type: 'address' },
       { name: 'resolver', type: 'address' },
+      { name: 'roleBitmap', type: 'uint256' },
+      { name: 'expiry',   type: 'uint64'  },
     ],
     outputs: [{ type: 'uint256' }],
   },
@@ -117,7 +133,7 @@ export const REGISTRY_ABI = [
     name: 'getSubregistry',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: 'label', type: 'string' }],
+    inputs: [{ name: 'anyId', type: 'uint256' }],
     outputs: [{ type: 'address' }],
   },
 ] as const
@@ -170,36 +186,28 @@ export const PERMISSIONED_RESOLVER_ABI = [
     inputs: [{ name: 'node', type: 'bytes32' }],
     outputs: [{ type: 'address' }],
   },
-  // ENSv2 PermissionedResolver role management
+  // ENSv2 PermissionedResolver scoped text permissions
   {
-    name: 'grantRole',
+    name: 'authorizeTextRoles',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
-      { name: 'role',    type: 'bytes32' },
+      { name: 'toName',  type: 'bytes' },
+      { name: 'key',     type: 'string' },
       { name: 'account', type: 'address' },
+      { name: 'grant',   type: 'bool' },
     ],
     outputs: [],
   },
   {
-    name: 'revokeRole',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'role',    type: 'bytes32' },
-      { name: 'account', type: 'address' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'hasRole',
+    name: 'roles',
     type: 'function',
     stateMutability: 'view',
     inputs: [
-      { name: 'role',    type: 'bytes32' },
+      { name: 'resource', type: 'bytes32' },
       { name: 'account', type: 'address' },
     ],
-    outputs: [{ type: 'bool' }],
+    outputs: [{ type: 'uint256' }],
   },
 ] as const
 
@@ -226,8 +234,9 @@ export const UNIVERSAL_RESOLVER_ABI = [
 // Role constants (keccak256 of role name strings)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const WRITER_ROLE  = keccak256(encodePacked(['string'], ['WRITER_ROLE']))
-export const MANAGER_ROLE = keccak256(encodePacked(['string'], ['MANAGER_ROLE']))
+export const ROLE_SET_TEXT = 1n << 4n
+export const WRITER_ROLE  = ROLE_SET_TEXT
+export const MANAGER_ROLE = ROLE_SET_TEXT
 export const ADMIN_ROLE   = '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`
 
 // ─────────────────────────────────────────────────────────────────────────────

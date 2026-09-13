@@ -16,6 +16,11 @@ import "../src/TreasureNFT.sol";
  * Reads TREASURE_HUNT and TREASURE_NFT from deployment.json.
  */
 contract SeedLocal is Script {
+    function _oneClue(bytes32 answer) internal pure returns (bytes32[] memory clues) {
+        clues = new bytes32[](1);
+        clues[0] = answer;
+    }
+
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
 
@@ -29,23 +34,29 @@ contract SeedLocal is Script {
 
         // ── Hunt 1: THE LOST ETHEREUM (Race, Medium) ───────────────────────
         hunt.createHunt{value: 0.05 ether}(
-            keccak256(abi.encodePacked("genesis")),
+            _oneClue(keccak256(abi.encodePacked("genesis"))),
             TreasureHunt.HuntType.Race,
-            block.timestamp + 7 days
+            block.timestamp + 7 days,
+            "medium",
+            "Blockchain"
         );
 
         // ── Hunt 2: THE MYSTERY OF THE GOLDEN BLOCK (MysteryDraw, Hard) ────
         hunt.createHunt{value: 0.10 ether}(
-            keccak256(abi.encodePacked("satoshi")),
+            _oneClue(keccak256(abi.encodePacked("satoshi"))),
             TreasureHunt.HuntType.MysteryDraw,
-            block.timestamp + 3 days
+            block.timestamp + 3 days,
+            "hard",
+            "Blockchain"
         );
 
         // ── Hunt 3: LINEN & CO — THE SUMMER SECRET (MysteryDraw) ──────────
         hunt.createHunt{value: 0.05 ether}(
-            keccak256(abi.encodePacked("linen")),
+            _oneClue(keccak256(abi.encodePacked("linen"))),
             TreasureHunt.HuntType.MysteryDraw,
-            block.timestamp + 5 days
+            block.timestamp + 5 days,
+            "medium",
+            "Fashion"
         );
 
         vm.stopBroadcast();

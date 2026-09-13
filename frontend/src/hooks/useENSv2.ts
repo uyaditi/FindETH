@@ -4,7 +4,7 @@
  * React hooks for the ENSv2 subname flow:
  *   - useRegisterBrandNamespace  — one tx to claim {slug}.treasurehunts.eth
  *   - useRegisterHuntSubname     — one tx to claim hunt-{id}.{slug}.treasurehunts.eth
- *   - useRegisterAgentSubname    — two txs: register + grantRole(WRITER_ROLE)
+ *   - useRegisterAgentSubname    — register + scoped text authorization
  *   - useSetResolverRecords      — batch setText calls (sequenced)
  *   - useHuntSubnameRecords      — live-reads all text records for a hunt node
  *   - useBrandSubnameRecords     — live-reads brand namespace records
@@ -36,6 +36,7 @@ import {
   readBrandSubnameRecords,
   readAgentSubnameRecords,
   checkSubnameExists,
+  getBrandSubregistry,
   checkAgentHasWriterRole,
   type SubnameRecord,
   type ContractWriteArgs,
@@ -187,9 +188,8 @@ export function useRegisterHuntSubname() {
     if (!address) return
 
     // Step 1 — register hunt-{id}.{slug}.treasurehunts.eth
-    await registerWrite.execute(
-      buildRegisterHuntSubname(huntId, brandSlug, address)
-    )
+    const brandRegistry = await getBrandSubregistry(brandSlug)
+    await registerWrite.execute(buildRegisterHuntSubname(huntId, brandSlug, address, brandRegistry))
     if (registerWrite.status === 'error') return
 
     // Step 2 — write hunt metadata to the PermissionedResolver
@@ -231,9 +231,8 @@ export function useRegisterAgentSubname() {
     if (!address) return
 
     // Steps 1+2: register subname + grant WRITER_ROLE in one sequential batch
-    await registerBatch.executeAll(
-      buildRegisterAgentSubname(huntId, brandSlug, address, agentAddress)
-    )
+    const brandRegistry = await getBrandSubregistry(brandSlug)
+    await registerBatch.executeAll(buildRegisterAgentSubname(huntId, brandSlug, address, agentAddress, brandRegistry))
     if (registerBatch.status === 'error') return
 
     // Step 3+: write agent identity records

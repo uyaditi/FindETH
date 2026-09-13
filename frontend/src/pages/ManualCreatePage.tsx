@@ -246,6 +246,8 @@ export default function ManualCreatePage() {
         huntType:    Number(values.huntType) as HuntType,
         endTime,
         prizeEth:    values.prize,
+        difficulty:  values.difficulty as Difficulty,
+        category:    values.category,
       })
     } catch { /* error handled by hook */ }
   }

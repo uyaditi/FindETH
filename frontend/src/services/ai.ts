@@ -261,6 +261,12 @@ export async function generateHunt(
   onProgress('querying_subgraph')
   const graphRec = await getGraphRecommendations(SUBGRAPH_URL)
 
+  if (graphRec.source !== 'live') {
+    throw new Error(
+      'Live The Graph analytics are required for AI generation. Set VITE_SUBGRAPH_URL to your Subgraph Studio query URL and configure VITE_GRAPH_API_KEY when required.'
+    )
+  }
+
   if (AI_API_BASE) {
     // Real API path
     onProgress('fetching_content')
@@ -273,7 +279,7 @@ export async function generateHunt(
   // Demo path — still uses Graph recommendations to shape output
   const result = await generateDemo(input, graphRec, onProgress)
   onProgress('complete')
-  return result
+  return { ...result, graphRecommendations: graphRec }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

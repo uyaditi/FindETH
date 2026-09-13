@@ -87,19 +87,28 @@ contract TreasureHuntTest is Test {
     function _createRaceHunt() internal returns (uint256 huntId) {
         vm.prank(CREATOR);
         huntId = hunt.createHunt{value: PRIZE}(
-            ANSWER_HASH,
+            _oneClue(),
             TreasureHunt.HuntType.Race,
-            0
+            0,
+            "medium",
+            "General"
         );
     }
 
     function _createMysteryHunt(uint256 endTime) internal returns (uint256 huntId) {
         vm.prank(CREATOR);
         huntId = hunt.createHunt{value: PRIZE}(
-            ANSWER_HASH,
+            _oneClue(),
             TreasureHunt.HuntType.MysteryDraw,
-            endTime
+            endTime,
+            "medium",
+            "General"
         );
+    }
+
+    function _oneClue() internal pure returns (bytes32[] memory clues) {
+        clues = new bytes32[](1);
+        clues[0] = ANSWER_HASH;
     }
 
     // =========================================================================
@@ -108,7 +117,7 @@ contract TreasureHuntTest is Test {
 
     function test_createHunt_valid_race() public {
         vm.expectEmit(true, true, false, true);
-        emit TreasureHunt.HuntCreated(1, CREATOR, TreasureHunt.HuntType.Race, PRIZE, 0);
+        emit TreasureHunt.HuntCreated(1, CREATOR, TreasureHunt.HuntType.Race, PRIZE, 0, 1, "medium", "General");
 
         uint256 id = _createRaceHunt();
 
@@ -116,7 +125,8 @@ contract TreasureHuntTest is Test {
         TreasureHunt.Hunt memory h = hunt.getHunt(id);
         assertEq(h.creator,    CREATOR);
         assertEq(h.prize,      PRIZE);
-        assertEq(h.answerHash, ANSWER_HASH);
+        assertEq(h.clueCount, 1);
+        assertEq(hunt.getClueHashes(id)[0], ANSWER_HASH);
         assertEq(uint8(h.status), uint8(TreasureHunt.HuntStatus.Active));
         assertEq(uint8(h.huntType), uint8(TreasureHunt.HuntType.Race));
     }
@@ -133,13 +143,14 @@ contract TreasureHuntTest is Test {
     function test_createHunt_revert_zeroPrize() public {
         vm.prank(CREATOR);
         vm.expectRevert(TreasureHunt.InsufficientPrize.selector);
-        hunt.createHunt{value: 0}(ANSWER_HASH, TreasureHunt.HuntType.Race, 0);
+        hunt.createHunt{value: 0}(_oneClue(), TreasureHunt.HuntType.Race, 0, "medium", "General");
     }
 
     function test_createHunt_revert_pastEndTime() public {
+        vm.warp(100);
         vm.prank(CREATOR);
         vm.expectRevert(TreasureHunt.InvalidEndTime.selector);
-        hunt.createHunt{value: PRIZE}(ANSWER_HASH, TreasureHunt.HuntType.Race, block.timestamp - 1);
+        hunt.createHunt{value: PRIZE}(_oneClue(), TreasureHunt.HuntType.Race, 99, "medium", "General");
     }
 
     function test_createHunt_incrementsCounter() public {
@@ -534,7 +545,7 @@ contract TreasureHuntTest is Test {
 
         vm.prank(CREATOR);
         vm.expectRevert();
-        hunt.createHunt{value: PRIZE}(ANSWER_HASH, TreasureHunt.HuntType.Race, 0);
+        hunt.createHunt{value: PRIZE}(_oneClue(), TreasureHunt.HuntType.Race, 0, "medium", "General");
     }
 
     function test_security_pauseBlocksSubmission() public {
@@ -666,9 +677,11 @@ contract TreasureHuntTest is Test {
 
         vm.prank(CREATOR);
         uint256 id = hunt.createHunt{value: prizeAmount}(
-            ANSWER_HASH,
+            _oneClue(),
             TreasureHunt.HuntType.Race,
-            0
+            0,
+            "medium",
+            "General"
         );
 
         uint256 aliceBefore = ALICE.balance;

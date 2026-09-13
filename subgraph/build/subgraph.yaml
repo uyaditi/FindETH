@@ -25,14 +25,17 @@ dataSources:
         - GlobalStats
       abis:
         - name: TreasureHunt
-          file: TreasureHunt/TreasureHunt.json
+          file: TreasureHunt/abis/TreasureHunt.json
         - name: TreasureNFT
-          file: TreasureHunt/TreasureNFT.json
+          file: TreasureHunt/abis/TreasureNFT.json
       eventHandlers:
-        - event: HuntCreated(indexed uint256,indexed address,uint8,uint256,uint256)
+        - event: HuntCreated(indexed uint256,indexed
+            address,uint8,uint256,uint256,uint256,string,string)
           handler: handleHuntCreated
         - event: HuntParticipated(indexed uint256,indexed address)
           handler: handleHuntParticipated
+        - event: ClueSolved(indexed uint256,indexed address,uint256,uint256)
+          handler: handleClueSolved
         - event: CorrectSolution(indexed uint256,indexed address,uint256)
           handler: handleCorrectSolution
         - event: IncorrectSolution(indexed uint256,indexed address)
